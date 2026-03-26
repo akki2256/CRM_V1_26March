@@ -31,6 +31,43 @@ export type ForgotResponse = {
   message: string
 }
 
+export type CodeReferenceItem = {
+  code: string
+  sequenceNo: number
+}
+
+export type UserOption = {
+  fullName: string
+}
+
+export type ContactCreateRequest = {
+  agentName: string
+  name: string
+  countryCode: string
+  phoneNumber: string
+  email: string
+  product: string
+  purposeOfLoan: string
+  address: string
+  income: string
+  employmentStatus: string
+  mortgage: 'Yes' | 'No'
+  otherExistingLoans: 'Yes' | 'No'
+  creditCard: 'Yes' | 'No'
+  type: 'People' | 'Organization'
+  segment: 'Master List' | 'Online'
+  status: 'Active' | 'Inactive'
+  label: string
+  owner: string
+  subOwner: string
+  account: string
+}
+
+export type ContactCreateResponse = {
+  contactId: number
+  message: string
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   const text = await res.text()
   if (!text) {
@@ -112,4 +149,56 @@ export async function changePasswordAfterReset(
     throw new Error(body.message ?? 'Could not update password.')
   }
   return parseJson<LoginResponse>(res)
+}
+
+export async function getCodeReference(
+  token: string,
+  categorySid: string,
+): Promise<CodeReferenceItem[]> {
+  const res = await fetch(`/api/reference/code-reference/${encodeURIComponent(categorySid)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    throw new Error('Could not load dropdown values.')
+  }
+  return parseJson<CodeReferenceItem[]>(res)
+}
+
+export async function getAdminOwners(token: string): Promise<UserOption[]> {
+  const res = await fetch('/api/reference/users/admin-owners', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    throw new Error('Could not load owner options.')
+  }
+  return parseJson<UserOption[]>(res)
+}
+
+export async function getActiveUsers(token: string): Promise<UserOption[]> {
+  const res = await fetch('/api/reference/users/active', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    throw new Error('Could not load active user options.')
+  }
+  return parseJson<UserOption[]>(res)
+}
+
+export async function createContact(
+  token: string,
+  payload: ContactCreateRequest,
+): Promise<ContactCreateResponse> {
+  const res = await fetch('/api/contacts', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not save contact.')
+  }
+  return parseJson<ContactCreateResponse>(res)
 }
