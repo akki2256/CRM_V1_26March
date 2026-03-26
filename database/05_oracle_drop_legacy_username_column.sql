@@ -1,0 +1,3 @@
+-- Optional: if Hibernate previously created a nullable USERNAME column alongside NOT NULL USER_NAME,
+-- you can drop the unused column after verifying no data depends on it.
+-- ALTER TABLE "users" DROP COLUMN username;
