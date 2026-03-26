@@ -68,6 +68,51 @@ export type ContactCreateResponse = {
   message: string
 }
 
+export type UserMaintenanceRow = {
+  userId: number
+  username: string
+  firstName: string
+  lastName: string
+  userGroups: string[]
+  email: string
+  phoneNumber: string
+}
+
+export type GroupOption = {
+  groupId: number
+  groupName: string
+}
+
+export type UserCreateRequest = {
+  username: string
+  firstName: string
+  lastName: string
+  userGroup: string
+  password: string
+  email: string
+  phoneNumber: string
+  addToGroup: string
+}
+
+export type UserCreateResponse = {
+  userId: number
+  message: string
+}
+
+export type UserSearchFilters = {
+  firstName: string
+  firstNameOp: string
+  lastName: string
+  lastNameOp: string
+  username: string
+  usernameOp: string
+  email: string
+  emailOp: string
+  phone: string
+  phoneOp: string
+  userGroup: string
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   const text = await res.text()
   if (!text) {
@@ -201,4 +246,68 @@ export async function createContact(
     throw new Error(body.message ?? 'Could not save contact.')
   }
   return parseJson<ContactCreateResponse>(res)
+}
+
+export async function listUserMaintenanceUsers(
+  token: string,
+  filters?: Partial<UserSearchFilters>,
+): Promise<UserMaintenanceRow[]> {
+  const params = new URLSearchParams()
+  if (filters) {
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v && String(v).trim() !== '') {
+        params.set(k, String(v))
+      }
+    })
+  }
+  const query = params.toString()
+  const res = await fetch(`/api/admin/user-maintenance/users${query ? `?${query}` : ''}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not load users.')
+  }
+  return parseJson<UserMaintenanceRow[]>(res)
+}
+
+export async function listUserMaintenanceGroups(token: string): Promise<GroupOption[]> {
+  const res = await fetch('/api/admin/user-maintenance/groups', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not load groups.')
+  }
+  return parseJson<GroupOption[]>(res)
+}
+
+export async function createMaintenanceUser(
+  token: string,
+  payload: UserCreateRequest,
+): Promise<UserCreateResponse> {
+  const res = await fetch('/api/admin/user-maintenance/users', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not create user.')
+  }
+  return parseJson<UserCreateResponse>(res)
+}
+
+export async function getMaintenanceUserById(token: string, userId: number): Promise<UserMaintenanceRow> {
+  const res = await fetch(`/api/admin/user-maintenance/users/${userId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not load user details.')
+  }
+  return parseJson<UserMaintenanceRow>(res)
 }

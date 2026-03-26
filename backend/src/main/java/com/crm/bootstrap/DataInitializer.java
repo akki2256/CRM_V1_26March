@@ -48,7 +48,6 @@ public class DataInitializer {
                 admin.setFirstName("System");
                 admin.setLastName("Administrator");
                 admin.setPasswordHash(passwordEncoder.encode("ChangeMe!1"));
-                admin.setPasswordSalt("");
                 admin.setEmail("admin@example.com");
                 admin.setPhoneNumber(null);
                 admin.setLoginAttempts(0);

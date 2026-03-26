@@ -18,7 +18,6 @@ CREATE TABLE IF NOT EXISTS users (
     first_name                   VARCHAR(100) NOT NULL,
     last_name                    VARCHAR(100) NOT NULL,
     password_hash                VARCHAR(255) NOT NULL,
-    password_salt                VARCHAR(255) NOT NULL DEFAULT '',
     email                        VARCHAR(255) NOT NULL UNIQUE,
     phone_number                 VARCHAR(50),
     login_attempts               INT NOT NULL DEFAULT 0,

@@ -113,7 +113,6 @@ cd backend
 Use output as:
 
 - `password_hash` = generated BCrypt hash
-- `password_salt` = empty string (`''`) for this app
 
 ## 6) Oracle SQL Scripts (Useful)
 
@@ -123,6 +122,8 @@ Inside `database/`:
 - `02_seed_groups_oracle.sql` - Group seed data
 - `04_oracle_migrate_timestamps_plain.sql` - Timestamp migration helper
 - `05_oracle_drop_legacy_username_column.sql` - Optional cleanup helper
+- `09_oracle_drop_password_salt_column.sql` - Optional helper to drop old `password_salt` column
+- `10_oracle_create_table_sequences.sql` - Optional helper to create/use explicit Oracle sequences for table IDs
 
 ## 7) Common Troubleshooting
 

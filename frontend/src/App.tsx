@@ -1,25 +1,34 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
   changePasswordAfterReset,
+  createMaintenanceUser,
   createContact,
   forgotPassword,
   forgotUserId,
+  getMaintenanceUserById,
   getActiveUsers,
   getAdminOwners,
   getCodeReference,
   getToken,
+  listUserMaintenanceGroups,
+  listUserMaintenanceUsers,
   login,
   logout,
   me,
   setToken,
+  type GroupOption,
   type MeResponse,
+  type UserMaintenanceRow,
 } from './api/client'
+import Spinner from './components/Spinner'
+import { submenuRegistry } from './screens/submenus/submenuRegistry'
 
 type ForgotStep = 'menu' | 'password' | 'userid'
 type MenuKey = 'dashboard' | 'sales' | 'marketing' | 'logs' | 'admin'
 type CreateNewOption = 'contact' | 'deal'
 type YesNo = 'Yes' | 'No'
+type TextOperator = 'eq' | 'starts_with' | 'ends_with' | 'not_eq'
 
 type ContactForm = {
   agentName: string
@@ -44,6 +53,31 @@ type ContactForm = {
   account: string
 }
 
+type UserSearchForm = {
+  firstName: string
+  firstNameOp: TextOperator
+  lastName: string
+  lastNameOp: TextOperator
+  username: string
+  usernameOp: TextOperator
+  userGroup: string
+  email: string
+  emailOp: TextOperator
+  phone: string
+  phoneOp: TextOperator
+}
+
+type AddUserForm = {
+  username: string
+  firstName: string
+  lastName: string
+  userGroup: string
+  password: string
+  email: string
+  phoneNumber: string
+  addToGroup: string
+}
+
 const MENU_ITEMS: { key: MenuKey; label: string; icon: string; submenus: string[] }[] = [
   { key: 'dashboard', label: 'Dashboard', icon: '📊', submenus: [] },
   {
@@ -64,6 +98,13 @@ const WIDGET_CHOICES = [
   'Top Accounts',
   'Activities Due',
   'Quote Conversion',
+]
+
+const OPERATOR_OPTIONS: { label: string; value: TextOperator }[] = [
+  { label: 'Equal to', value: 'eq' },
+  { label: 'Starts with', value: 'starts_with' },
+  { label: 'Ends with', value: 'ends_with' },
+  { label: 'Not equals to', value: 'not_eq' },
 ]
 
 const INITIAL_CONTACT_FORM: ContactForm = {
@@ -87,6 +128,31 @@ const INITIAL_CONTACT_FORM: ContactForm = {
   owner: '',
   subOwner: '',
   account: '',
+}
+
+const INITIAL_USER_SEARCH_FORM: UserSearchForm = {
+  firstName: '',
+  firstNameOp: 'eq',
+  lastName: '',
+  lastNameOp: 'eq',
+  username: '',
+  usernameOp: 'eq',
+  userGroup: '',
+  email: '',
+  emailOp: 'eq',
+  phone: '',
+  phoneOp: 'eq',
+}
+
+const INITIAL_ADD_USER_FORM: AddUserForm = {
+  username: '',
+  firstName: '',
+  lastName: '',
+  userGroup: '',
+  password: '',
+  email: '',
+  phoneNumber: '',
+  addToGroup: '',
 }
 
 function App() {
@@ -126,11 +192,36 @@ function App() {
   const [labelOptions, setLabelOptions] = useState<string[]>([])
   const [ownerOptions, setOwnerOptions] = useState<string[]>([])
   const [activeUserOptions, setActiveUserOptions] = useState<string[]>([])
+  const [activeSubmenuByMenu, setActiveSubmenuByMenu] = useState<Record<MenuKey, string | null>>({
+    dashboard: null,
+    sales: null,
+    marketing: null,
+    logs: null,
+    admin: null,
+  })
+  const [userRows, setUserRows] = useState<UserMaintenanceRow[]>([])
+  const [groupsOptions, setGroupsOptions] = useState<GroupOption[]>([])
+  const [userMaintenanceLoading, setUserMaintenanceLoading] = useState(false)
+  const [searchUsersOpen, setSearchUsersOpen] = useState(false)
+  const [searchUsersForm, setSearchUsersForm] = useState<UserSearchForm>(INITIAL_USER_SEARCH_FORM)
+  const [addUserOpen, setAddUserOpen] = useState(false)
+  const [addUserForm, setAddUserForm] = useState<AddUserForm>(INITIAL_ADD_USER_FORM)
+  const [addUserTouched, setAddUserTouched] = useState<Record<string, boolean>>({})
+  const [addUserSubmitTried, setAddUserSubmitTried] = useState(false)
+  const [displayMenuUserId, setDisplayMenuUserId] = useState<number | null>(null)
+  const [displayUserOpen, setDisplayUserOpen] = useState(false)
+  const [displayUserRow, setDisplayUserRow] = useState<UserMaintenanceRow | null>(null)
+  const [currentUsersPage, setCurrentUsersPage] = useState(1)
+  const [searchUsersSubmitting, setSearchUsersSubmitting] = useState(false)
+  const [addUserSubmitting, setAddUserSubmitting] = useState(false)
 
   const [widgetDropdownOpen, setWidgetDropdownOpen] = useState(false)
   const [selectedWidgets, setSelectedWidgets] = useState<string[]>(WIDGET_CHOICES.slice(0, 4))
   const [draftWidgets, setDraftWidgets] = useState<string[]>(selectedWidgets)
   const [preferencesStatus, setPreferencesStatus] = useState<string | null>(null)
+  const createNewRef = useRef<HTMLDivElement | null>(null)
+  const profileRef = useRef<HTMLDivElement | null>(null)
+  const widgetDropdownRef = useRef<HTMLDivElement | null>(null)
 
   const loadProfile = useCallback(async (t: string) => {
     const m = await me(t)
@@ -208,6 +299,11 @@ function App() {
     return `crm_dashboard_widgets_${profile.username.toLowerCase()}`
   }, [profile?.username])
 
+  const isAdminUser = useMemo(
+    () => Boolean(profile?.groups?.some((groupName) => groupName.toLowerCase() === 'admin')),
+    [profile?.groups],
+  )
+
   useEffect(() => {
     if (!preferencesKey) {
       return
@@ -230,6 +326,62 @@ function App() {
   useEffect(() => {
     setDraftWidgets(selectedWidgets)
   }, [selectedWidgets])
+
+  function closeFloatingPopups() {
+    setCreateNewOpen(false)
+    setProfileMenuOpen(false)
+    setWidgetDropdownOpen(false)
+  }
+
+  const loadUserMaintenanceData = useCallback(
+    async (filters?: Partial<UserSearchForm>) => {
+      if (!token || !isAdminUser) {
+        return
+      }
+      setUserMaintenanceLoading(true)
+      try {
+        const [users, groups] = await Promise.all([
+          listUserMaintenanceUsers(token, filters),
+          listUserMaintenanceGroups(token),
+        ])
+        setUserRows(users)
+        setGroupsOptions(groups)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not load users.')
+      } finally {
+        setUserMaintenanceLoading(false)
+      }
+    },
+    [token, isAdminUser],
+  )
+
+  useEffect(() => {
+    if (activeMenu === 'admin' && activeSubmenuByMenu.admin === 'User Maintenance') {
+      void loadUserMaintenanceData()
+    }
+  }, [activeMenu, activeSubmenuByMenu.admin, loadUserMaintenanceData])
+
+  useEffect(() => {
+    setCurrentUsersPage(1)
+  }, [userRows])
+
+  useEffect(() => {
+    function handleDocumentMouseDown(event: MouseEvent) {
+      const target = event.target as Node
+      if (createNewRef.current && createNewRef.current.contains(target)) {
+        return
+      }
+      if (profileRef.current && profileRef.current.contains(target)) {
+        return
+      }
+      if (widgetDropdownRef.current && widgetDropdownRef.current.contains(target)) {
+        return
+      }
+      closeFloatingPopups()
+    }
+    document.addEventListener('mousedown', handleDocumentMouseDown)
+    return () => document.removeEventListener('mousedown', handleDocumentMouseDown)
+  }, [])
 
   function contactValidation(values: ContactForm): Record<string, string> {
     const errors: Record<string, string> = {}
@@ -301,6 +453,8 @@ function App() {
       setToken(res.accessToken)
       setTokenState(res.accessToken)
       setPassword('')
+      setActiveMenu('dashboard')
+      setActiveSubmenuByMenu({ dashboard: null, sales: null, marketing: null, logs: null, admin: null })
       if (res.requiresPasswordChange) {
         setChangePwdOpen(true)
       }
@@ -325,14 +479,37 @@ function App() {
     setProfile(null)
     setChangePwdOpen(false)
     setProfileMenuOpen(false)
+    setActiveMenu('dashboard')
+    setActiveSubmenuByMenu({ dashboard: null, sales: null, marketing: null, logs: null, admin: null })
   }
 
-  function handleMainMenuClick(key: MenuKey) {
-    setActiveMenu(key)
+  function handleMainMenuClick(item: { key: MenuKey; submenus: string[] }) {
+    setActiveMenu(item.key)
+    if (item.key === 'dashboard') {
+      setActiveSubmenuByMenu((prev) => ({ ...prev, dashboard: null }))
+    }
+    if (item.key === 'logs') {
+      setActiveSubmenuByMenu((prev) => ({ ...prev, logs: 'Logs' }))
+    }
+    if (item.submenus.length > 0) {
+      toggleMainMenuExpand(item.key)
+    }
+  }
+
+  function handleSubmenuClick(menu: MenuKey, submenu: string) {
+    setActiveMenu(menu)
+    setActiveSubmenuByMenu((prev) => ({ ...prev, [menu]: submenu }))
+    setDisplayMenuUserId(null)
   }
 
   function toggleMainMenuExpand(key: MenuKey) {
-    setExpandedMenus((prev) => ({ ...prev, [key]: !prev[key] }))
+    setExpandedMenus((prev) => ({
+      dashboard: false,
+      sales: key === 'sales' ? !prev.sales : false,
+      marketing: key === 'marketing' ? !prev.marketing : false,
+      logs: false,
+      admin: key === 'admin' ? !prev.admin : false,
+    }))
   }
 
   function expandOrCollapseAllMenus() {
@@ -345,6 +522,98 @@ function App() {
       logs: false,
       admin: next,
     })
+  }
+
+  function addUserValidation(values: AddUserForm): Record<string, string> {
+    const errors: Record<string, string> = {}
+    const nameRegex = /^[A-Za-z ]+$/
+    const digitsRegex = /^\d+$/
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+    if (!values.username.trim()) errors.username = 'Username is required.'
+    if (!values.firstName.trim()) {
+      errors.firstName = 'First Name is required.'
+    } else if (!nameRegex.test(values.firstName.trim())) {
+      errors.firstName = 'First Name can contain only letters and spaces.'
+    }
+    if (!values.lastName.trim()) {
+      errors.lastName = 'Last Name is required.'
+    } else if (!nameRegex.test(values.lastName.trim())) {
+      errors.lastName = 'Last Name can contain only letters and spaces.'
+    }
+    if (!values.userGroup) errors.userGroup = 'User Group is required.'
+    if (!values.password) errors.password = 'Password is required.'
+    if (!values.email.trim()) {
+      errors.email = 'Email is required.'
+    } else if (!emailRegex.test(values.email.trim())) {
+      errors.email = 'Please enter a valid email address.'
+    }
+    if (!values.phoneNumber.trim()) {
+      errors.phoneNumber = 'Phone Number is required.'
+    } else if (!digitsRegex.test(values.phoneNumber.trim())) {
+      errors.phoneNumber = 'Phone Number must contain digits only.'
+    }
+    return errors
+  }
+
+  const addUserErrors = useMemo(() => addUserValidation(addUserForm), [addUserForm])
+
+  function showAddUserError(field: keyof AddUserForm): string | null {
+    if (!addUserErrors[field]) return null
+    if (addUserSubmitTried || addUserTouched[field]) return addUserErrors[field]
+    return null
+  }
+
+  function touchAddUserField(field: keyof AddUserForm) {
+    setAddUserTouched((prev) => ({ ...prev, [field]: true }))
+  }
+
+  async function submitUserSearch(e: React.FormEvent) {
+    e.preventDefault()
+    setSearchUsersSubmitting(true)
+    try {
+      await loadUserMaintenanceData(searchUsersForm)
+      setSearchUsersOpen(false)
+    } finally {
+      setSearchUsersSubmitting(false)
+    }
+  }
+
+  async function submitAddUser(e: React.FormEvent) {
+    e.preventDefault()
+    setAddUserSubmitTried(true)
+    if (Object.keys(addUserErrors).length > 0) return
+    if (!token) {
+      setError('Your session has expired. Please sign in again.')
+      return
+    }
+    setAddUserSubmitting(true)
+    try {
+      const result = await createMaintenanceUser(token, addUserForm)
+      setAddUserOpen(false)
+      setAddUserForm(INITIAL_ADD_USER_FORM)
+      setAddUserTouched({})
+      setAddUserSubmitTried(false)
+      setPreferencesStatus(`${result.message} (ID: ${result.userId})`)
+      setTimeout(() => setPreferencesStatus(null), 3000)
+      await loadUserMaintenanceData(searchUsersForm)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create user.')
+    } finally {
+      setAddUserSubmitting(false)
+    }
+  }
+
+  async function openDisplayUser(userId: number) {
+    if (!token) return
+    try {
+      const user = await getMaintenanceUserById(token, userId)
+      setDisplayUserRow(user)
+      setDisplayUserOpen(true)
+      setDisplayMenuUserId(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load user details.')
+    }
   }
 
   function handleCreateNewOption(option: CreateNewOption) {
@@ -529,12 +798,21 @@ function App() {
 
   const sessionLoading = Boolean(token && !profile)
   const showDashboard = Boolean(token && profile)
+  const usersPageSize = 10
+  const pagedUserRows = useMemo(() => {
+    const start = (currentUsersPage - 1) * usersPageSize
+    return userRows.slice(start, start + usersPageSize)
+  }, [userRows, currentUsersPage])
+  const totalUsersPages = Math.max(1, Math.ceil(userRows.length / usersPageSize))
+  const activeSubmenu = activeSubmenuByMenu[activeMenu]
+  const submenuKey = activeSubmenu ? `${activeMenu}:${activeSubmenu}` : ''
+  const SubmenuComponent = submenuRegistry[submenuKey]
 
   return (
     <div className="app-root">
       {sessionLoading && (
         <div className="card login-card">
-          <p className="muted">Loading session…</p>
+          <p className="muted loading-inline"><Spinner /> Loading session…</p>
         </div>
       )}
       {!token && (
@@ -552,7 +830,7 @@ function App() {
             </label>
             {error && <p className="error">{error}</p>}
             <button type="submit" className="primary" disabled={busy}>
-              {busy ? 'Signing in…' : 'Sign in'}
+              {busy ? <><Spinner size="sm" /> Signing in…</> : 'Sign in'}
             </button>
           </form>
           <button type="button" className="link" onClick={openForgot}>Forgot password or user ID</button>
@@ -566,10 +844,10 @@ function App() {
               <div className="left-nav-title">CRM Menu</div>
               <button type="button" className="nav-expand-btn" onClick={expandOrCollapseAllMenus}>Expand options</button>
             </div>
-            {MENU_ITEMS.map((item) => (
+            {MENU_ITEMS.filter((item) => item.key !== 'admin' || isAdminUser).map((item) => (
               <div key={item.key} className="menu-block">
                 <div className="menu-main-row">
-                  <button type="button" className={`menu-main ${activeMenu === item.key ? 'active' : ''}`} onClick={() => handleMainMenuClick(item.key)}>
+                  <button type="button" className={`menu-main ${activeMenu === item.key ? 'active' : ''}`} onClick={() => handleMainMenuClick(item)}>
                     <span className="menu-icon">{item.icon}</span><span>{item.label}</span>
                   </button>
                   {item.submenus.length > 0 && (
@@ -581,7 +859,7 @@ function App() {
                 {item.submenus.length > 0 && expandedMenus[item.key] && (
                   <div className="menu-sub-wrap">
                     {item.submenus.map((subItem) => (
-                      <button key={subItem} type="button" className="menu-sub">{subItem}</button>
+                      <button key={subItem} type="button" className="menu-sub" onClick={() => handleSubmenuClick(item.key, subItem)}>{subItem}</button>
                     ))}
                   </div>
                 )}
@@ -596,8 +874,18 @@ function App() {
                 <p className="muted">Signed in as <strong>{profile?.firstName} {profile?.lastName}</strong> ({profile?.username})</p>
               </div>
               <div className="top-actions">
-                <div className="create-new-wrap">
-                  <button type="button" className="secondary create-new-btn" onClick={() => setCreateNewOpen((prev) => !prev)}>➕ Create New</button>
+                <div className="create-new-wrap" ref={createNewRef}>
+                  <button
+                    type="button"
+                    className="secondary create-new-btn"
+                    onClick={() => {
+                      const shouldOpen = !createNewOpen
+                      closeFloatingPopups()
+                      setCreateNewOpen(shouldOpen)
+                    }}
+                  >
+                    ➕ Create New
+                  </button>
                   {createNewOpen && (
                     <div className="create-new-menu">
                       <button type="button" onClick={() => handleCreateNewOption('contact')}>Contact</button>
@@ -605,56 +893,139 @@ function App() {
                     </div>
                   )}
                 </div>
-                <div className="profile-wrap">
-                  <button type="button" className="profile-icon" onClick={() => setProfileMenuOpen((prev) => !prev)} aria-label="Open profile menu">
+                <div className="profile-wrap" ref={profileRef}>
+                  <button
+                    type="button"
+                    className="profile-icon"
+                    onClick={() => {
+                      const shouldOpen = !profileMenuOpen
+                      closeFloatingPopups()
+                      setProfileMenuOpen(shouldOpen)
+                    }}
+                    aria-label="Open profile menu"
+                  >
                     {profile?.firstName?.charAt(0).toUpperCase()}
                   </button>
                   {profileMenuOpen && (
                     <div className="profile-menu">
-                      <a href="#" onClick={(e) => e.preventDefault()}>Profile</a>
-                      <a href="#" onClick={(e) => e.preventDefault()}>Settings</a>
-                      <a href="#" onClick={(e) => e.preventDefault()}>Change Password</a>
-                      <button type="button" onClick={handleLogout}>Log out</button>
+                      <button type="button">Profile</button>
+                      <button type="button">Settings</button>
+                      <button type="button">Change Password</button>
+                      <button type="button" className="logout-btn" onClick={handleLogout}>Logout</button>
                     </div>
                   )}
                 </div>
               </div>
             </header>
 
-            <div className="dashboard-actions">
-              <div className="widget-dropdown-wrap">
-                <button type="button" className="secondary" onClick={() => setWidgetDropdownOpen((prev) => !prev)}>Select widgets</button>
-                {widgetDropdownOpen && (
-                  <div className="widget-dropdown">
-                    <p className="muted small">Choose widgets for your landing dashboard.</p>
-                    {WIDGET_CHOICES.map((widgetName) => (
-                      <label key={widgetName} className="widget-check">
-                        <input type="checkbox" checked={draftWidgets.includes(widgetName)} onChange={() => handleWidgetToggle(widgetName)} />
-                        <span>{widgetName}</span>
-                      </label>
-                    ))}
-                    <div className="row">
-                      <button type="button" className="link" onClick={handleWidgetCancel}>Cancel</button>
-                      <button type="button" className="primary" onClick={handleWidgetSubmit}>Submit</button>
+            {activeMenu === 'admin' && activeSubmenuByMenu.admin === 'User Maintenance' && isAdminUser ? (
+              <section className="user-maintenance">
+                <div className="dashboard-actions">
+                  <button type="button" className="secondary" onClick={() => setAddUserOpen(true)}>Add User</button>
+                  <button type="button" className="secondary" onClick={() => setSearchUsersOpen(true)}>Search users</button>
+                </div>
+                {preferencesStatus && <p className="info">{preferencesStatus}</p>}
+                <div className="table-wrap">
+                  <table className="result-table">
+                    <thead>
+                      <tr>
+                        <th>Username</th>
+                        <th>First Name</th>
+                        <th>Last Name</th>
+                        <th>User Group</th>
+                        <th>Email</th>
+                        <th>Phone Number</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {userMaintenanceLoading && (
+                        <tr><td colSpan={6}><div className="loading-inline"><Spinner size="sm" /> Loading users...</div></td></tr>
+                      )}
+                      {!userMaintenanceLoading && userRows.length === 0 && (
+                        <tr><td colSpan={6}>No users found.</td></tr>
+                      )}
+                      {!userMaintenanceLoading && pagedUserRows.map((user) => (
+                        <tr key={user.userId}>
+                          <td className="username-cell">
+                            <button type="button" className="link inline-link" onClick={() => setDisplayMenuUserId(displayMenuUserId === user.userId ? null : user.userId)}>{user.username}</button>
+                            {displayMenuUserId === user.userId && (
+                              <div className="inline-popup-menu">
+                                <button type="button" onClick={() => void openDisplayUser(user.userId)}>Display</button>
+                              </div>
+                            )}
+                          </td>
+                          <td>{user.firstName}</td>
+                          <td>{user.lastName}</td>
+                          <td>{user.userGroups.join(', ')}</td>
+                          <td>{user.email}</td>
+                          <td>{user.phoneNumber}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="pagination-row">
+                  <button type="button" className="secondary" onClick={() => setCurrentUsersPage((p) => Math.max(1, p - 1))} disabled={currentUsersPage === 1}>Previous</button>
+                  <span className="muted">Page {currentUsersPage} of {totalUsersPages}</span>
+                  <button type="button" className="secondary" onClick={() => setCurrentUsersPage((p) => Math.min(totalUsersPages, p + 1))} disabled={currentUsersPage >= totalUsersPages}>Next</button>
+                </div>
+              </section>
+            ) : (
+              <>
+                {activeMenu === 'dashboard' && !activeSubmenu ? (
+                  <>
+                    <div className="dashboard-actions">
+                      <div className="widget-dropdown-wrap" ref={widgetDropdownRef}>
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => {
+                            const shouldOpen = !widgetDropdownOpen
+                            closeFloatingPopups()
+                            setWidgetDropdownOpen(shouldOpen)
+                          }}
+                        >
+                          Select widgets
+                        </button>
+                        {widgetDropdownOpen && (
+                          <div className="widget-dropdown">
+                            <p className="muted small">Choose widgets for your landing dashboard.</p>
+                            {WIDGET_CHOICES.map((widgetName) => (
+                              <label key={widgetName} className="widget-check">
+                                <input type="checkbox" checked={draftWidgets.includes(widgetName)} onChange={() => handleWidgetToggle(widgetName)} />
+                                <span>{widgetName}</span>
+                              </label>
+                            ))}
+                            <div className="row">
+                              <button type="button" className="link" onClick={handleWidgetCancel}>Cancel</button>
+                              <button type="button" className="primary" onClick={handleWidgetSubmit}>Submit</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <button type="button" className="secondary" onClick={handleSavePreferences}>Save Preferences</button>
                     </div>
+                    {preferencesStatus && <p className="info">{preferencesStatus}</p>}
+                    {contactSavedMessage && <p className="info success-msg">{contactSavedMessage}</p>}
+                    <div className="widgets-grid">
+                      {selectedWidgets.length === 0 && (
+                        <div className="widget-card">
+                          <h3>No widgets selected</h3>
+                          <p>Open Select widgets and choose items for the dashboard.</p>
+                        </div>
+                      )}
+                      {selectedWidgets.map((widgetName) => (
+                        <article key={widgetName} className="widget-card"><h3>{widgetName}</h3><p>Analytics report placeholder for {widgetName}.</p></article>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="widgets-grid">
+                    {SubmenuComponent ? <SubmenuComponent /> : <div className="widget-card"><h3>Section</h3><p>This section will be available soon.</p></div>}
                   </div>
                 )}
-              </div>
-              <button type="button" className="secondary" onClick={handleSavePreferences}>Save Preferences</button>
-            </div>
-            {preferencesStatus && <p className="info">{preferencesStatus}</p>}
-            {contactSavedMessage && <p className="info success-msg">{contactSavedMessage}</p>}
-            <div className="widgets-grid">
-              {selectedWidgets.length === 0 && (
-                <div className="widget-card">
-                  <h3>No widgets selected</h3>
-                  <p>Open Select widgets and choose items for the dashboard.</p>
-                </div>
-              )}
-              {selectedWidgets.map((widgetName) => (
-                <article key={widgetName} className="widget-card"><h3>{widgetName}</h3><p>Analytics report placeholder for {widgetName}.</p></article>
-              ))}
-            </div>
+              </>
+            )}
           </section>
         </div>
       )}
@@ -692,6 +1063,67 @@ function App() {
         </div>
       )}
 
+      {searchUsersOpen && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setSearchUsersOpen(false)}>
+          <div className="modal user-maintenance-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h2>Search users</h2>
+            <form className="stack" onSubmit={submitUserSearch}>
+              <div className="filter-row"><span>First Name</span><select value={searchUsersForm.firstNameOp} onChange={(e) => setSearchUsersForm((p) => ({ ...p, firstNameOp: e.target.value as TextOperator }))}>{OPERATOR_OPTIONS.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}</select><input value={searchUsersForm.firstName} onChange={(e) => setSearchUsersForm((p) => ({ ...p, firstName: e.target.value }))} /></div>
+              <div className="filter-row"><span>Last Name</span><select value={searchUsersForm.lastNameOp} onChange={(e) => setSearchUsersForm((p) => ({ ...p, lastNameOp: e.target.value as TextOperator }))}>{OPERATOR_OPTIONS.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}</select><input value={searchUsersForm.lastName} onChange={(e) => setSearchUsersForm((p) => ({ ...p, lastName: e.target.value }))} /></div>
+              <div className="filter-row"><span>User Name</span><select value={searchUsersForm.usernameOp} onChange={(e) => setSearchUsersForm((p) => ({ ...p, usernameOp: e.target.value as TextOperator }))}>{OPERATOR_OPTIONS.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}</select><input value={searchUsersForm.username} onChange={(e) => setSearchUsersForm((p) => ({ ...p, username: e.target.value }))} /></div>
+              <div className="filter-row"><span>User Group</span><select value={searchUsersForm.userGroup} onChange={(e) => setSearchUsersForm((p) => ({ ...p, userGroup: e.target.value }))}><option value="">All</option>{groupsOptions.map((g) => <option key={g.groupId} value={g.groupName}>{g.groupName}</option>)}</select><input value="" disabled placeholder="Select from dropdown" /></div>
+              <div className="filter-row"><span>Email</span><select value={searchUsersForm.emailOp} onChange={(e) => setSearchUsersForm((p) => ({ ...p, emailOp: e.target.value as TextOperator }))}>{OPERATOR_OPTIONS.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}</select><input value={searchUsersForm.email} onChange={(e) => setSearchUsersForm((p) => ({ ...p, email: e.target.value }))} /></div>
+              <div className="filter-row"><span>Phone</span><select value={searchUsersForm.phoneOp} onChange={(e) => setSearchUsersForm((p) => ({ ...p, phoneOp: e.target.value as TextOperator }))}>{OPERATOR_OPTIONS.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}</select><input value={searchUsersForm.phone} onChange={(e) => setSearchUsersForm((p) => ({ ...p, phone: e.target.value }))} /></div>
+              <div className="row">
+                <button type="button" className="secondary" onClick={() => { setSearchUsersForm(INITIAL_USER_SEARCH_FORM); void loadUserMaintenanceData(); setSearchUsersOpen(false) }}>Reset</button>
+                <button type="submit" className="primary" disabled={searchUsersSubmitting}>{searchUsersSubmitting ? <><Spinner size="sm" /> Searching...</> : 'Search'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {addUserOpen && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setAddUserOpen(false)}>
+          <div className="modal user-maintenance-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h2>Add User</h2>
+            <form className="stack" onSubmit={submitAddUser}>
+              <label className="field"><span>Username *</span><input value={addUserForm.username} onChange={(e) => setAddUserForm((p) => ({ ...p, username: e.target.value }))} onBlur={() => touchAddUserField('username')} />{showAddUserError('username') && <p className="error">{showAddUserError('username')}</p>}</label>
+              <label className="field"><span>First Name *</span><input value={addUserForm.firstName} onChange={(e) => setAddUserForm((p) => ({ ...p, firstName: e.target.value }))} onBlur={() => touchAddUserField('firstName')} />{showAddUserError('firstName') && <p className="error">{showAddUserError('firstName')}</p>}</label>
+              <label className="field"><span>Last Name *</span><input value={addUserForm.lastName} onChange={(e) => setAddUserForm((p) => ({ ...p, lastName: e.target.value }))} onBlur={() => touchAddUserField('lastName')} />{showAddUserError('lastName') && <p className="error">{showAddUserError('lastName')}</p>}</label>
+              <label className="field"><span>User Group *</span><select value={addUserForm.userGroup} onChange={(e) => setAddUserForm((p) => ({ ...p, userGroup: e.target.value }))} onBlur={() => touchAddUserField('userGroup')}><option value="">Select</option>{groupsOptions.map((g) => <option key={g.groupId} value={g.groupName}>{g.groupName}</option>)}</select>{showAddUserError('userGroup') && <p className="error">{showAddUserError('userGroup')}</p>}</label>
+              <label className="field"><span>Password *</span><input type="password" value={addUserForm.password} onChange={(e) => setAddUserForm((p) => ({ ...p, password: e.target.value }))} onBlur={() => touchAddUserField('password')} />{showAddUserError('password') && <p className="error">{showAddUserError('password')}</p>}</label>
+              <label className="field"><span>Email *</span><input type="email" value={addUserForm.email} onChange={(e) => setAddUserForm((p) => ({ ...p, email: e.target.value }))} onBlur={() => touchAddUserField('email')} />{showAddUserError('email') && <p className="error">{showAddUserError('email')}</p>}</label>
+              <label className="field"><span>Phone Number *</span><input value={addUserForm.phoneNumber} inputMode="numeric" onChange={(e) => setAddUserForm((p) => ({ ...p, phoneNumber: e.target.value }))} onBlur={() => touchAddUserField('phoneNumber')} />{showAddUserError('phoneNumber') && <p className="error">{showAddUserError('phoneNumber')}</p>}</label>
+              <label className="field"><span>Add to group</span><select value={addUserForm.addToGroup} onChange={(e) => setAddUserForm((p) => ({ ...p, addToGroup: e.target.value }))}><option value="">Select</option>{groupsOptions.map((g) => <option key={g.groupId} value={g.groupName}>{g.groupName}</option>)}</select></label>
+              <div className="row">
+                <button type="button" className="secondary" onClick={() => setAddUserOpen(false)}>Cancel</button>
+                <button type="submit" className="primary" disabled={addUserSubmitting}>{addUserSubmitting ? <><Spinner size="sm" /> Submitting...</> : 'Submit'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {displayUserOpen && displayUserRow && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setDisplayUserOpen(false)}>
+          <div className="modal user-maintenance-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h2>User display</h2>
+            <div className="stack">
+              <label className="field"><span>Username</span><input value={displayUserRow.username} disabled /></label>
+              <label className="field"><span>First Name</span><input value={displayUserRow.firstName} disabled /></label>
+              <label className="field"><span>Last Name</span><input value={displayUserRow.lastName} disabled /></label>
+              <label className="field"><span>User Group</span><input value={displayUserRow.userGroups.join(', ')} disabled /></label>
+              <label className="field"><span>Email</span><input value={displayUserRow.email} disabled /></label>
+              <label className="field"><span>Phone Number</span><input value={displayUserRow.phoneNumber} disabled /></label>
+              <div className="row">
+                <button type="button" className="secondary" onClick={() => setDisplayUserOpen(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {forgotOpen && (
         <div className="modal-backdrop" role="presentation" onClick={() => !busy && setForgotOpen(false)}>
           <div className="modal" role="dialog" aria-modal="true" aria-labelledby="forgot-title" onClick={(e) => e.stopPropagation()}>
@@ -725,7 +1157,7 @@ function App() {
       )}
 
       {changePwdOpen && token && (
-        <div className="modal-backdrop" role="presentation">
+        <div className="modal-backdrop" role="presentation" onClick={() => !busy && setChangePwdOpen(false)}>
           <div className="modal" role="dialog" aria-modal="true" aria-labelledby="pwd-title" onClick={(e) => e.stopPropagation()}>
             <h2 id="pwd-title">Set a new password</h2>
             <p className="muted policy">Your new password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character.</p>

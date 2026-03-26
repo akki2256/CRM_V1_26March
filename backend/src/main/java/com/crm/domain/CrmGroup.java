@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -14,7 +15,8 @@ import java.time.ZoneOffset;
 public class CrmGroup {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @SequenceGenerator(name = "groupsSeqGen", sequenceName = "seq_groups", allocationSize = 1)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "groupsSeqGen")
     @Column(name = "group_id")
     private Long groupId;
 

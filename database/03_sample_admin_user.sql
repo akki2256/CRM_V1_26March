@@ -5,14 +5,13 @@
 -- Uncomment and adjust after groups exist:
 /*
 INSERT INTO users (
-    username, first_name, last_name, password_hash, password_salt, email, phone_number,
+    user_name, first_name, last_name, password_hash, email, phone_number,
     login_attempts, user_status, created_by, created_date, last_updated_by, last_updated_date, oca_control
 ) VALUES (
     'admin',
     'System',
     'Administrator',
     '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
-    '',
     'admin@example.com',
     NULL,
     0,
