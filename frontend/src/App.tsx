@@ -4,8 +4,11 @@ import {
   changePasswordAfterReset,
   createMaintenanceUser,
   createContact,
+  createDeal,
+  DEAL_CURRENCY_OPTIONS,
   forgotPassword,
   forgotUserId,
+  getDealFormOptions,
   getMaintenanceUserById,
   getActiveUsers,
   getAdminOwners,
@@ -17,10 +20,12 @@ import {
   logout,
   me,
   setToken,
+  type DealFormOptionsResponse,
   type GroupOption,
   type MeResponse,
   type UserMaintenanceRow,
 } from './api/client'
+import ContactByLabelWidget from './components/ContactByLabelWidget'
 import Spinner from './components/Spinner'
 import { submenuRegistry } from './screens/submenus/submenuRegistry'
 
@@ -31,7 +36,7 @@ type YesNo = 'Yes' | 'No'
 type TextOperator = 'eq' | 'starts_with' | 'ends_with' | 'not_eq'
 
 type ContactForm = {
-  agentName: string
+  agentEmail: string
   name: string
   countryCode: string
   phoneNumber: string
@@ -84,7 +89,18 @@ const MENU_ITEMS: { key: MenuKey; label: string; icon: string; submenus: string[
     key: 'sales',
     label: 'Sales',
     icon: '💼',
-    submenus: ['Accounts', 'Contacts', 'Segments/Lists', 'Deals', 'Activities', 'Quotes', 'Invoices', 'Pricebook', 'Products'],
+    submenus: [
+      'Accounts',
+      'Contacts',
+      'Segments/Lists',
+      'Deals',
+      'Sales',
+      'Activities',
+      'Quotes',
+      'Invoices',
+      'Pricebook',
+      'Products',
+    ],
   },
   { key: 'marketing', label: 'Marketing', icon: '📣', submenus: ['Forms'] },
   { key: 'logs', label: 'Logs', icon: '🗂️', submenus: [] },
@@ -92,6 +108,7 @@ const MENU_ITEMS: { key: MenuKey; label: string; icon: string; submenus: string[
 ]
 
 const WIDGET_CHOICES = [
+  'Contact by Label',
   'Revenue Summary',
   'Sales Funnel',
   'Pipeline by Stage',
@@ -107,17 +124,43 @@ const OPERATOR_OPTIONS: { label: string; value: TextOperator }[] = [
   { label: 'Not equals to', value: 'not_eq' },
 ]
 
+const CONTACT_FORM_PRODUCT_OPTIONS = ['Business Loan', 'Car Loan', 'Personal Loan', 'Equity Loan'] as const
+
+const CONTACT_FORM_PURPOSE_OPTIONS = [
+  'Consolidation',
+  'Home Improvement',
+  'Medical',
+  'Business Cash Flow',
+] as const
+
+const CONTACT_FORM_EMPLOYMENT_OPTIONS = ['Self Employed', 'Full time', 'Part time', 'Casual'] as const
+
+/** Dial codes stored in CONTACT.country_code (digits). Default Australia +61. */
+const COUNTRY_PHONE_OPTIONS: { flag: string; name: string; dial: string; value: string }[] = [
+  { flag: '🇦🇺', name: 'Australia', dial: '+61', value: '61' },
+  { flag: '🇳🇿', name: 'New Zealand', dial: '+64', value: '64' },
+  { flag: '🇺🇸', name: 'United States / Canada', dial: '+1', value: '1' },
+  { flag: '🇬🇧', name: 'United Kingdom', dial: '+44', value: '44' },
+  { flag: '🇮🇳', name: 'India', dial: '+91', value: '91' },
+  { flag: '🇸🇬', name: 'Singapore', dial: '+65', value: '65' },
+  { flag: '🇭🇰', name: 'Hong Kong', dial: '+852', value: '852' },
+  { flag: '🇯🇵', name: 'Japan', dial: '+81', value: '81' },
+  { flag: '🇨🇳', name: 'China', dial: '+86', value: '86' },
+  { flag: '🇩🇪', name: 'Germany', dial: '+49', value: '49' },
+  { flag: '🇫🇷', name: 'France', dial: '+33', value: '33' },
+]
+
 const INITIAL_CONTACT_FORM: ContactForm = {
-  agentName: '',
+  agentEmail: '',
   name: '',
-  countryCode: '',
+  countryCode: '61',
   phoneNumber: '',
   email: '',
-  product: '',
+  product: CONTACT_FORM_PRODUCT_OPTIONS[0],
   purposeOfLoan: '',
   address: '',
   income: '',
-  employmentStatus: '',
+  employmentStatus: CONTACT_FORM_EMPLOYMENT_OPTIONS[0],
   mortgage: '',
   otherExistingLoans: '',
   creditCard: '',
@@ -155,6 +198,31 @@ const INITIAL_ADD_USER_FORM: AddUserForm = {
   addToGroup: '',
 }
 
+type DealForm = {
+  contactId: string
+  userId: string
+  closingDate: string
+  dealDate: string
+  stageId: string
+  amount: string
+  pipeline: string
+  currency: string
+}
+
+function emptyDealForm(profile: MeResponse | null): DealForm {
+  const today = new Date().toISOString().slice(0, 10)
+  return {
+    contactId: '',
+    userId: profile ? String(profile.userId) : '',
+    closingDate: '',
+    dealDate: today,
+    stageId: '',
+    amount: '',
+    pipeline: 'Default Pipeline',
+    currency: 'AUD',
+  }
+}
+
 function App() {
   const [token, setTokenState] = useState<string | null>(() => getToken())
   const [profile, setProfile] = useState<MeResponse | null>(null)
@@ -187,8 +255,18 @@ function App() {
   const [contactSubmitTried, setContactSubmitTried] = useState(false)
   const [contactSavedMessage, setContactSavedMessage] = useState<string | null>(null)
   const [contactSubmitting, setContactSubmitting] = useState(false)
-  const [productOptions, setProductOptions] = useState<string[]>([])
-  const [employmentOptions, setEmploymentOptions] = useState<string[]>([])
+  const contactOpenedFromDealRef = useRef(false)
+  const [dealOpen, setDealOpen] = useState(false)
+  const [dealForm, setDealForm] = useState<DealForm>(() => emptyDealForm(null))
+  const [dealOptions, setDealOptions] = useState<DealFormOptionsResponse | null>(null)
+  const [dealOptionsLoading, setDealOptionsLoading] = useState(false)
+  const [dealTouched, setDealTouched] = useState<Record<string, boolean>>({})
+  const [dealSubmitTried, setDealSubmitTried] = useState(false)
+  const [dealSubmitting, setDealSubmitting] = useState(false)
+  const [dealSavedMessage, setDealSavedMessage] = useState<string | null>(null)
+  const dealContactPickerRef = useRef<HTMLDivElement>(null)
+  const [dealContactPickerOpen, setDealContactPickerOpen] = useState(false)
+  const [dealContactSearch, setDealContactSearch] = useState('')
   const [labelOptions, setLabelOptions] = useState<string[]>([])
   const [ownerOptions, setOwnerOptions] = useState<string[]>([])
   const [activeUserOptions, setActiveUserOptions] = useState<string[]>([])
@@ -199,6 +277,7 @@ function App() {
     logs: null,
     admin: null,
   })
+  const [salesAccountHighlight, setSalesAccountHighlight] = useState<string | null>(null)
   const [userRows, setUserRows] = useState<UserMaintenanceRow[]>([])
   const [groupsOptions, setGroupsOptions] = useState<GroupOption[]>([])
   const [userMaintenanceLoading, setUserMaintenanceLoading] = useState(false)
@@ -216,7 +295,12 @@ function App() {
   const [addUserSubmitting, setAddUserSubmitting] = useState(false)
 
   const [widgetDropdownOpen, setWidgetDropdownOpen] = useState(false)
-  const [selectedWidgets, setSelectedWidgets] = useState<string[]>(WIDGET_CHOICES.slice(0, 4))
+  const [selectedWidgets, setSelectedWidgets] = useState<string[]>([
+    'Contact by Label',
+    'Revenue Summary',
+    'Sales Funnel',
+    'Pipeline by Stage',
+  ])
   const [draftWidgets, setDraftWidgets] = useState<string[]>(selectedWidgets)
   const [preferencesStatus, setPreferencesStatus] = useState<string | null>(null)
   const createNewRef = useRef<HTMLDivElement | null>(null)
@@ -255,8 +339,6 @@ function App() {
 
   useEffect(() => {
     if (!token) {
-      setProductOptions([])
-      setEmploymentOptions([])
       setLabelOptions([])
       setOwnerOptions([])
       setActiveUserOptions([])
@@ -265,9 +347,7 @@ function App() {
     let cancelled = false
     ;(async () => {
       try {
-        const [products, employment, labels, owners, activeUsers] = await Promise.all([
-          getCodeReference(token, 'PRODUCT_CONTACT'),
-          getCodeReference(token, 'EMPLOYMENT_STATUS_CONTACT'),
+        const [labels, owners, activeUsers] = await Promise.all([
           getCodeReference(token, 'LABEL_CONTACT'),
           getAdminOwners(token),
           getActiveUsers(token),
@@ -275,8 +355,6 @@ function App() {
         if (cancelled) {
           return
         }
-        setProductOptions(products.map((x) => x.code))
-        setEmploymentOptions(employment.map((x) => x.code))
         setLabelOptions(labels.map((x) => x.code))
         setOwnerOptions(owners.map((x) => x.fullName))
         setActiveUserOptions(activeUsers.map((x) => x.fullName))
@@ -355,6 +433,21 @@ function App() {
     [token, isAdminUser],
   )
 
+  const loadDealFormOptions = useCallback(async () => {
+    if (!token) {
+      return
+    }
+    setDealOptionsLoading(true)
+    try {
+      const opts = await getDealFormOptions(token)
+      setDealOptions(opts)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load deal form.')
+    } finally {
+      setDealOptionsLoading(false)
+    }
+  }, [token])
+
   useEffect(() => {
     if (activeMenu === 'admin' && activeSubmenuByMenu.admin === 'User Maintenance') {
       void loadUserMaintenanceData()
@@ -389,10 +482,10 @@ function App() {
     const digitsRegex = /^\d+$/
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-    if (!values.agentName.trim()) {
-      errors.agentName = 'Agent Name is required.'
-    } else if (!nameRegex.test(values.agentName.trim())) {
-      errors.agentName = 'Agent Name can contain only letters and spaces.'
+    if (!values.agentEmail.trim()) {
+      errors.agentEmail = "Agent's email is required."
+    } else if (!emailRegex.test(values.agentEmail.trim())) {
+      errors.agentEmail = 'Please enter a valid agent email address.'
     }
 
     if (!values.name.trim()) {
@@ -443,6 +536,77 @@ function App() {
   }
 
   const contactErrors = useMemo(() => contactValidation(contactForm), [contactForm])
+
+  function dealValidation(values: DealForm): Record<string, string> {
+    const errors: Record<string, string> = {}
+    if (!values.contactId.trim()) {
+      errors.contactId = 'Contact is required.'
+    }
+    if (!values.userId.trim()) {
+      errors.userId = 'Account is required.'
+    }
+    if (!values.closingDate.trim()) {
+      errors.closingDate = 'Closing date is required.'
+    }
+    if (!values.dealDate.trim()) {
+      errors.dealDate = 'Deal date is required.'
+    }
+    if (!values.stageId.trim()) {
+      errors.stageId = 'Stage is required.'
+    }
+    const amtRaw = values.amount.trim()
+    if (!amtRaw) {
+      errors.amount = 'Amount is required.'
+    } else if (!/^\d+(\.\d+)?$/.test(amtRaw)) {
+      errors.amount = 'Amount must be a valid number.'
+    } else if (Number(amtRaw) < 0) {
+      errors.amount = 'Amount cannot be negative.'
+    }
+    if (!values.pipeline.trim()) {
+      errors.pipeline = 'Pipeline is required.'
+    }
+    if (!values.currency.trim()) {
+      errors.currency = 'Currency is required.'
+    }
+    return errors
+  }
+
+  const dealErrors = useMemo(() => dealValidation(dealForm), [dealForm])
+
+  const filteredDealContacts = useMemo(() => {
+    const list = dealOptions?.contacts ?? []
+    const q = dealContactSearch.trim().toLowerCase()
+    if (!q) {
+      return list
+    }
+    return list.filter(
+      (c) =>
+        c.contactName.toLowerCase().includes(q) ||
+        (c.purposeOfLoan ?? '').toLowerCase().includes(q) ||
+        (c.accountName ?? '').toLowerCase().includes(q),
+    )
+  }, [dealOptions, dealContactSearch])
+
+  const selectedDealContact = useMemo(() => {
+    if (!dealForm.contactId.trim() || !dealOptions) {
+      return null
+    }
+    return dealOptions.contacts.find((c) => String(c.contactId) === dealForm.contactId) ?? null
+  }, [dealForm.contactId, dealOptions])
+
+  useEffect(() => {
+    if (!dealContactPickerOpen) {
+      return
+    }
+    function onDocMouseDown(event: MouseEvent) {
+      const root = dealContactPickerRef.current
+      if (root && !root.contains(event.target as Node)) {
+        setDealContactPickerOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    return () => document.removeEventListener('mousedown', onDocMouseDown)
+  }, [dealContactPickerOpen])
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -496,10 +660,20 @@ function App() {
     }
   }
 
+  const navigateToSalesAccount = useCallback((accountName: string) => {
+    setActiveMenu('sales')
+    setExpandedMenus((prev) => ({ ...prev, sales: true }))
+    setActiveSubmenuByMenu((prev) => ({ ...prev, sales: 'Sales' }))
+    setSalesAccountHighlight(accountName)
+  }, [])
+
   function handleSubmenuClick(menu: MenuKey, submenu: string) {
     setActiveMenu(menu)
     setActiveSubmenuByMenu((prev) => ({ ...prev, [menu]: submenu }))
     setDisplayMenuUserId(null)
+    if (menu !== 'sales' || submenu !== 'Sales') {
+      setSalesAccountHighlight(null)
+    }
   }
 
   function toggleMainMenuExpand(key: MenuKey) {
@@ -621,10 +795,16 @@ function App() {
     if (option === 'contact') {
       setContactOpen(true)
       setContactSavedMessage(null)
+      contactOpenedFromDealRef.current = false
       setContactForm((prev) => ({
         ...prev,
-        product: prev.product || productOptions[0] || '',
-        employmentStatus: prev.employmentStatus || employmentOptions[0] || '',
+        countryCode: COUNTRY_PHONE_OPTIONS.some((c) => c.value === prev.countryCode) ? prev.countryCode : '61',
+        product: (CONTACT_FORM_PRODUCT_OPTIONS as readonly string[]).includes(prev.product)
+          ? prev.product
+          : CONTACT_FORM_PRODUCT_OPTIONS[0],
+        employmentStatus: (CONTACT_FORM_EMPLOYMENT_OPTIONS as readonly string[]).includes(prev.employmentStatus)
+          ? prev.employmentStatus
+          : CONTACT_FORM_EMPLOYMENT_OPTIONS[0],
         label: prev.label || labelOptions[0] || '',
         owner: prev.owner || ownerOptions[0] || '',
         subOwner: prev.subOwner || activeUserOptions[0] || '',
@@ -632,8 +812,14 @@ function App() {
       }))
       return
     }
-    setPreferencesStatus('Deal creation will be added soon.')
-    setTimeout(() => setPreferencesStatus(null), 2400)
+    setDealOpen(true)
+    setDealSavedMessage(null)
+    setDealSubmitTried(false)
+    setDealTouched({})
+    setDealContactPickerOpen(false)
+    setDealContactSearch('')
+    setDealForm(emptyDealForm(profile))
+    void loadDealFormOptions()
   }
 
   function handleContactChange<K extends keyof ContactForm>(key: K, value: ContactForm[K]) {
@@ -645,9 +831,106 @@ function App() {
   }
 
   function closeContactPopup() {
+    contactOpenedFromDealRef.current = false
     setContactOpen(false)
     setContactTouched({})
     setContactSubmitTried(false)
+  }
+
+  function closeDealPopup() {
+    setDealOpen(false)
+    setDealSubmitTried(false)
+    setDealTouched({})
+    setDealOptions(null)
+    setDealContactPickerOpen(false)
+    setDealContactSearch('')
+  }
+
+  function openAddContactFromDeal() {
+    if (!token) {
+      setError('Your session has expired. Please sign in again.')
+      return
+    }
+    setDealContactPickerOpen(false)
+    setDealContactSearch('')
+    contactOpenedFromDealRef.current = true
+    setContactSavedMessage(null)
+    setContactOpen(true)
+    setContactForm((prev) => ({
+      ...prev,
+      countryCode: COUNTRY_PHONE_OPTIONS.some((c) => c.value === prev.countryCode) ? prev.countryCode : '61',
+      product: (CONTACT_FORM_PRODUCT_OPTIONS as readonly string[]).includes(prev.product)
+        ? prev.product
+        : CONTACT_FORM_PRODUCT_OPTIONS[0],
+      employmentStatus: (CONTACT_FORM_EMPLOYMENT_OPTIONS as readonly string[]).includes(prev.employmentStatus)
+        ? prev.employmentStatus
+        : CONTACT_FORM_EMPLOYMENT_OPTIONS[0],
+      label: prev.label || labelOptions[0] || '',
+      owner: prev.owner || ownerOptions[0] || '',
+      subOwner: prev.subOwner || activeUserOptions[0] || '',
+      account: prev.account || activeUserOptions[0] || '',
+    }))
+  }
+
+  function applyCurrentUserAsDealAccount() {
+    if (!profile) {
+      return
+    }
+    setDealForm((prev) => ({ ...prev, userId: String(profile.userId) }))
+  }
+
+  function handleDealChange<K extends keyof DealForm>(key: K, value: DealForm[K]) {
+    setDealForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  function touchDealField(key: keyof DealForm) {
+    setDealTouched((prev) => ({ ...prev, [key]: true }))
+  }
+
+  function showDealError(field: keyof DealForm): string | null {
+    if (!dealErrors[field]) {
+      return null
+    }
+    if (dealSubmitTried || dealTouched[field]) {
+      return dealErrors[field]
+    }
+    return null
+  }
+
+  async function submitDeal(e: React.FormEvent) {
+    e.preventDefault()
+    setDealSubmitTried(true)
+    if (Object.keys(dealErrors).length > 0) {
+      return
+    }
+    if (!token) {
+      setError('Your session has expired. Please sign in again.')
+      return
+    }
+    setDealSubmitting(true)
+    try {
+      const response = await createDeal(token, {
+        contactId: Number(dealForm.contactId),
+        userId: Number(dealForm.userId),
+        closingDate: dealForm.closingDate,
+        stageId: Number(dealForm.stageId),
+        amount: Number(dealForm.amount.trim()),
+        dealDate: dealForm.dealDate,
+        pipeline: dealForm.pipeline.trim(),
+        currency: dealForm.currency.trim(),
+      })
+      setDealOpen(false)
+      setDealSubmitTried(false)
+      setDealTouched({})
+      setDealForm(emptyDealForm(profile))
+      setDealOptions(null)
+      setDealSavedMessage(`${response.message} (ID: ${response.dealId})`)
+      setTimeout(() => setDealSavedMessage(null), 4000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save deal.')
+    } finally {
+      setDealSubmitting(false)
+    }
   }
 
   async function submitContact(e: React.FormEvent) {
@@ -663,7 +946,7 @@ function App() {
     setContactSubmitting(true)
     try {
       const response = await createContact(token, {
-        agentName: contactForm.agentName.trim(),
+        agentEmail: contactForm.agentEmail.trim(),
         name: contactForm.name.trim(),
         countryCode: contactForm.countryCode.trim(),
         phoneNumber: contactForm.phoneNumber.trim(),
@@ -684,6 +967,22 @@ function App() {
         subOwner: contactForm.subOwner,
         account: contactForm.account,
       })
+      const fromDeal = contactOpenedFromDealRef.current
+      contactOpenedFromDealRef.current = false
+      if (fromDeal) {
+        setContactOpen(false)
+        setContactTouched({})
+        setContactSubmitTried(false)
+        setContactForm(INITIAL_CONTACT_FORM)
+        setDealForm((prev) => ({ ...prev, contactId: String(response.contactId) }))
+        try {
+          const opts = await getDealFormOptions(token)
+          setDealOptions(opts)
+        } catch {
+          /* dropdown refresh is best-effort */
+        }
+        return
+      }
       setContactOpen(false)
       setContactTouched({})
       setContactSubmitTried(false)
@@ -1007,6 +1306,7 @@ function App() {
                     </div>
                     {preferencesStatus && <p className="info">{preferencesStatus}</p>}
                     {contactSavedMessage && <p className="info success-msg">{contactSavedMessage}</p>}
+                    {dealSavedMessage && <p className="info success-msg">{dealSavedMessage}</p>}
                     <div className="widgets-grid">
                       {selectedWidgets.length === 0 && (
                         <div className="widget-card">
@@ -1014,14 +1314,31 @@ function App() {
                           <p>Open Select widgets and choose items for the dashboard.</p>
                         </div>
                       )}
-                      {selectedWidgets.map((widgetName) => (
-                        <article key={widgetName} className="widget-card"><h3>{widgetName}</h3><p>Analytics report placeholder for {widgetName}.</p></article>
-                      ))}
+                      {selectedWidgets.map((widgetName) =>
+                        widgetName === 'Contact by Label' ? (
+                          <ContactByLabelWidget key={widgetName} />
+                        ) : (
+                          <article key={widgetName} className="widget-card">
+                            <h3>{widgetName}</h3>
+                            <p>Analytics report placeholder for {widgetName}.</p>
+                          </article>
+                        ),
+                      )}
                     </div>
                   </>
                 ) : (
-                  <div className="widgets-grid">
-                    {SubmenuComponent ? <SubmenuComponent /> : <div className="widget-card"><h3>Section</h3><p>This section will be available soon.</p></div>}
+                  <div className="submenu-panel">
+                    {SubmenuComponent ? (
+                      <SubmenuComponent
+                        goToSalesAccount={navigateToSalesAccount}
+                        salesAccountHighlight={salesAccountHighlight}
+                      />
+                    ) : (
+                      <div className="widget-card">
+                        <h3>Section</h3>
+                        <p>This section will be available soon.</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -1031,22 +1348,76 @@ function App() {
       )}
 
       {contactOpen && (
-        <div className="modal-backdrop" role="presentation" onClick={closeContactPopup}>
+        <div
+          className={`modal-backdrop${dealOpen ? ' modal-backdrop-elevated' : ''}`}
+          role="presentation"
+          onClick={closeContactPopup}
+        >
           <div className="modal contact-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h2>Create Contact</h2>
             <form className="contact-form" onSubmit={submitContact}>
-              <label className="field"><span>Agent Name *</span><input value={contactForm.agentName} onChange={(e) => handleContactChange('agentName', e.target.value)} onBlur={() => touchField('agentName')} />{showContactError('agentName') && <p className="error">{showContactError('agentName')}</p>}</label>
+              <label className="field"><span>Agent's email *</span><input type="email" value={contactForm.agentEmail} onChange={(e) => handleContactChange('agentEmail', e.target.value)} onBlur={() => touchField('agentEmail')} />{showContactError('agentEmail') && <p className="error">{showContactError('agentEmail')}</p>}</label>
               <label className="field"><span>Name *</span><input value={contactForm.name} onChange={(e) => handleContactChange('name', e.target.value)} onBlur={() => touchField('name')} />{showContactError('name') && <p className="error">{showContactError('name')}</p>}</label>
               <div className="field-group">
-                <label className="field"><span>Country Code *</span><input value={contactForm.countryCode} onChange={(e) => handleContactChange('countryCode', e.target.value)} onBlur={() => touchField('countryCode')} inputMode="numeric" />{showContactError('countryCode') && <p className="error">{showContactError('countryCode')}</p>}</label>
+                <label className="field">
+                  <span>Country *</span>
+                  <select
+                    className="contact-country-select"
+                    value={contactForm.countryCode}
+                    onChange={(e) => handleContactChange('countryCode', e.target.value)}
+                    onBlur={() => touchField('countryCode')}
+                    aria-label="Country calling code"
+                  >
+                    {COUNTRY_PHONE_OPTIONS.map((c) => (
+                      <option key={`${c.value}-${c.name}`} value={c.value}>
+                        {c.flag} {c.name} ({c.dial})
+                      </option>
+                    ))}
+                  </select>
+                  {showContactError('countryCode') && <p className="error">{showContactError('countryCode')}</p>}
+                </label>
                 <label className="field"><span>Phone Number *</span><input value={contactForm.phoneNumber} onChange={(e) => handleContactChange('phoneNumber', e.target.value)} onBlur={() => touchField('phoneNumber')} inputMode="numeric" />{showContactError('phoneNumber') && <p className="error">{showContactError('phoneNumber')}</p>}</label>
               </div>
-              <label className="field"><span>Email *</span><input type="email" value={contactForm.email} onChange={(e) => handleContactChange('email', e.target.value)} onBlur={() => touchField('email')} />{showContactError('email') && <p className="error">{showContactError('email')}</p>}</label>
-              <label className="field"><span>Product</span><select value={contactForm.product} onChange={(e) => handleContactChange('product', e.target.value)}><option value="">Select</option>{productOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select></label>
-              <label className="field"><span>Purpose of loan *</span><input value={contactForm.purposeOfLoan} onChange={(e) => handleContactChange('purposeOfLoan', e.target.value)} onBlur={() => touchField('purposeOfLoan')} />{showContactError('purposeOfLoan') && <p className="error">{showContactError('purposeOfLoan')}</p>}</label>
+              <label className="field"><span>Contact Email *</span><input type="email" value={contactForm.email} onChange={(e) => handleContactChange('email', e.target.value)} onBlur={() => touchField('email')} />{showContactError('email') && <p className="error">{showContactError('email')}</p>}</label>
+              <label className="field">
+                <span>Product</span>
+                <select value={contactForm.product} onChange={(e) => handleContactChange('product', e.target.value)}>
+                  {CONTACT_FORM_PRODUCT_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Purpose *</span>
+                <select value={contactForm.purposeOfLoan} onChange={(e) => handleContactChange('purposeOfLoan', e.target.value)} onBlur={() => touchField('purposeOfLoan')}>
+                  <option value="">Select</option>
+                  {CONTACT_FORM_PURPOSE_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+                {showContactError('purposeOfLoan') && <p className="error">{showContactError('purposeOfLoan')}</p>}
+              </label>
               <label className="field"><span>Address</span><input value={contactForm.address} onChange={(e) => handleContactChange('address', e.target.value)} /></label>
               <label className="field"><span>Income of Customer</span><input value={contactForm.income} onChange={(e) => handleContactChange('income', e.target.value)} inputMode="decimal" /></label>
-              <label className="field"><span>Employment Status *</span><select value={contactForm.employmentStatus} onChange={(e) => handleContactChange('employmentStatus', e.target.value)} onBlur={() => touchField('employmentStatus')}><option value="">Select</option>{employmentOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select>{showContactError('employmentStatus') && <p className="error">{showContactError('employmentStatus')}</p>}</label>
+              <label className="field">
+                <span>Employment Status *</span>
+                <select
+                  value={contactForm.employmentStatus}
+                  onChange={(e) => handleContactChange('employmentStatus', e.target.value)}
+                  onBlur={() => touchField('employmentStatus')}
+                >
+                  {CONTACT_FORM_EMPLOYMENT_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+                {showContactError('employmentStatus') && <p className="error">{showContactError('employmentStatus')}</p>}
+              </label>
               <div className="field"><span>Mortgage *</span><div className="radio-row">{(['Yes', 'No'] as const).map((opt) => (<label key={opt}><input type="radio" name="mortgage" checked={contactForm.mortgage === opt} onChange={() => handleContactChange('mortgage', opt)} onBlur={() => touchField('mortgage')} />{opt}</label>))}</div>{showContactError('mortgage') && <p className="error">{showContactError('mortgage')}</p>}</div>
               <div className="field"><span>Other existing loans *</span><div className="radio-row">{(['Yes', 'No'] as const).map((opt) => (<label key={opt}><input type="radio" name="otherExistingLoans" checked={contactForm.otherExistingLoans === opt} onChange={() => handleContactChange('otherExistingLoans', opt)} onBlur={() => touchField('otherExistingLoans')} />{opt}</label>))}</div>{showContactError('otherExistingLoans') && <p className="error">{showContactError('otherExistingLoans')}</p>}</div>
               <div className="field"><span>Credit Card *</span><div className="radio-row">{(['Yes', 'No'] as const).map((opt) => (<label key={opt}><input type="radio" name="creditCard" checked={contactForm.creditCard === opt} onChange={() => handleContactChange('creditCard', opt)} onBlur={() => touchField('creditCard')} />{opt}</label>))}</div>{showContactError('creditCard') && <p className="error">{showContactError('creditCard')}</p>}</div>
@@ -1058,6 +1429,201 @@ function App() {
               <label className="field"><span>Sub owner</span><select value={contactForm.subOwner} onChange={(e) => handleContactChange('subOwner', e.target.value)}><option value="">Select</option>{activeUserOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select></label>
               <label className="field"><span>Account</span><select value={contactForm.account} onChange={(e) => handleContactChange('account', e.target.value)}><option value="">Select</option>{activeUserOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select></label>
               <div className="row"><button type="button" className="secondary" onClick={closeContactPopup} disabled={contactSubmitting}>Cancel</button><button type="submit" className="primary" disabled={contactSubmitting}>{contactSubmitting ? 'Saving...' : 'Submit'}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {dealOpen && (
+        <div className="modal-backdrop" role="presentation" onClick={closeDealPopup}>
+          <div className="modal deal-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <form className="deal-form" onSubmit={submitDeal}>
+              <div className="deal-modal-header">
+                <h2>Add Deal</h2>
+                <div className="deal-modal-header-actions">
+                  <button type="button" className="secondary" onClick={closeDealPopup} disabled={dealSubmitting}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="primary" disabled={dealSubmitting || dealOptionsLoading}>
+                    {dealSubmitting ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+              {dealOptionsLoading && <p className="muted small deal-form-loading">Loading contacts, accounts, and stages…</p>}
+              <div className="field deal-contact-field">
+                <span>Contact *</span>
+                <div className="deal-contact-picker" ref={dealContactPickerRef}>
+                  <button
+                    type="button"
+                    className="deal-contact-picker-trigger"
+                    disabled={dealOptionsLoading}
+                    aria-expanded={dealContactPickerOpen}
+                    aria-haspopup="listbox"
+                    onClick={() => {
+                      setDealContactPickerOpen((open) => {
+                        if (!open) {
+                          setDealContactSearch('')
+                        }
+                        return !open
+                      })
+                    }}
+                  >
+                    <span className="deal-contact-picker-trigger-text">
+                      {selectedDealContact?.contactName?.trim()
+                        ? selectedDealContact.contactName
+                        : 'Select contact'}
+                    </span>
+                    <span className="deal-contact-picker-chevron" aria-hidden>
+                      ▾
+                    </span>
+                  </button>
+                  {dealContactPickerOpen && (
+                    <div className="deal-contact-picker-panel" role="listbox">
+                      <div className="deal-contact-picker-title">Select contact</div>
+                      <input
+                        type="search"
+                        className="deal-contact-picker-search"
+                        placeholder="Search.."
+                        value={dealContactSearch}
+                        onChange={(e) => setDealContactSearch(e.target.value)}
+                        autoComplete="off"
+                      />
+                      <ul className="deal-contact-picker-list">
+                        {filteredDealContacts.length === 0 && (
+                          <li className="deal-contact-picker-empty muted small">No contacts match your search.</li>
+                        )}
+                        {filteredDealContacts.map((c) => {
+                          const purpose = (c.purposeOfLoan ?? '').trim() || '—'
+                          const account = (c.accountName ?? '').trim() || '—'
+                          const active = String(c.contactId) === dealForm.contactId
+                          return (
+                            <li key={c.contactId} role="option" aria-selected={active}>
+                              <button
+                                type="button"
+                                className={`deal-contact-picker-row${active ? ' is-active' : ''}`}
+                                onClick={() => {
+                                  handleDealChange('contactId', String(c.contactId))
+                                  touchDealField('contactId')
+                                  setDealContactPickerOpen(false)
+                                  setDealContactSearch('')
+                                }}
+                              >
+                                <span className="deal-contact-picker-name">{c.contactName || '—'}</span>
+                                <span className="deal-contact-picker-meta">
+                                  <span className="deal-contact-picker-purpose">{purpose}</span>
+                                  <span className="deal-contact-picker-account">{account}</span>
+                                </span>
+                              </button>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                      <button type="button" className="deal-contact-picker-add" onClick={openAddContactFromDeal}>
+                        + Add Contact
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {showDealError('contactId') && <p className="error">{showDealError('contactId')}</p>}
+              </div>
+              <div className="field field-row-with-action">
+                <span>Account *</span>
+                <div className="field-row-with-action-inner">
+                  <select
+                    value={dealForm.userId}
+                    onChange={(e) => handleDealChange('userId', e.target.value)}
+                    onBlur={() => touchDealField('userId')}
+                    disabled={dealOptionsLoading}
+                  >
+                    <option value="">Select user</option>
+                    {(dealOptions?.users ?? []).map((u) => (
+                      <option key={u.userId} value={String(u.userId)}>
+                        {u.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" className="secondary compact-action" onClick={applyCurrentUserAsDealAccount}>
+                    Add user
+                  </button>
+                </div>
+                {showDealError('userId') && <p className="error">{showDealError('userId')}</p>}
+              </div>
+              <label className="field">
+                <span>Closing date *</span>
+                <input
+                  type="date"
+                  value={dealForm.closingDate}
+                  onChange={(e) => handleDealChange('closingDate', e.target.value)}
+                  onBlur={() => touchDealField('closingDate')}
+                  disabled={dealOptionsLoading}
+                />
+                {showDealError('closingDate') && <p className="error">{showDealError('closingDate')}</p>}
+              </label>
+              <label className="field">
+                <span>Stage *</span>
+                <select
+                  value={dealForm.stageId}
+                  onChange={(e) => handleDealChange('stageId', e.target.value)}
+                  onBlur={() => touchDealField('stageId')}
+                  disabled={dealOptionsLoading}
+                >
+                  <option value="">Select stage</option>
+                  {(dealOptions?.stages ?? []).map((s) => (
+                    <option key={s.stageId} value={String(s.stageId)}>
+                      {s.stageName}
+                    </option>
+                  ))}
+                </select>
+                {showDealError('stageId') && <p className="error">{showDealError('stageId')}</p>}
+              </label>
+              <label className="field">
+                <span>Amount *</span>
+                <input
+                  value={dealForm.amount}
+                  onChange={(e) => handleDealChange('amount', e.target.value)}
+                  onBlur={() => touchDealField('amount')}
+                  inputMode="decimal"
+                  disabled={dealOptionsLoading}
+                />
+                {showDealError('amount') && <p className="error">{showDealError('amount')}</p>}
+              </label>
+              <label className="field">
+                <span>Deal date *</span>
+                <input
+                  type="date"
+                  value={dealForm.dealDate}
+                  onChange={(e) => handleDealChange('dealDate', e.target.value)}
+                  onBlur={() => touchDealField('dealDate')}
+                  disabled={dealOptionsLoading}
+                />
+                {showDealError('dealDate') && <p className="error">{showDealError('dealDate')}</p>}
+              </label>
+              <label className="field">
+                <span>Pipeline</span>
+                <input
+                  value={dealForm.pipeline}
+                  onChange={(e) => handleDealChange('pipeline', e.target.value)}
+                  onBlur={() => touchDealField('pipeline')}
+                  disabled={dealOptionsLoading}
+                />
+                {showDealError('pipeline') && <p className="error">{showDealError('pipeline')}</p>}
+              </label>
+              <label className="field">
+                <span>Currency *</span>
+                <select
+                  value={dealForm.currency}
+                  onChange={(e) => handleDealChange('currency', e.target.value)}
+                  onBlur={() => touchDealField('currency')}
+                  disabled={dealOptionsLoading}
+                >
+                  {DEAL_CURRENCY_OPTIONS.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+                {showDealError('currency') && <p className="error">{showDealError('currency')}</p>}
+              </label>
             </form>
           </div>
         </div>

@@ -1,5 +1,6 @@
 -- CRM login schema for Oracle Database 21c
--- Quoted identifiers match JPA @Table names ("users", "groups", "user_groups").
+-- Table names use Oracle’s default (unquoted identifiers → UPPERCASE: USERS, GROUPS, USER_GROUPS).
+-- Match JPA: @Table(name = "USERS") etc. (see domain entities).
 -- Oracle 21c: BOOLEAN is not available; use NUMBER(1) for flags (Hibernate maps booleans the same way).
 -- Date/time columns use TIMESTAMP(6) without time zone; values are stored as UTC wall time (app uses LocalDateTime UTC).
 
@@ -7,7 +8,7 @@
 CREATE SEQUENCE seq_groups START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 CREATE SEQUENCE seq_users START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 
-CREATE TABLE "groups" (
+CREATE TABLE GROUPS (
     group_id          NUMBER DEFAULT seq_groups.NEXTVAL PRIMARY KEY,
     group_name        VARCHAR2(100) NOT NULL UNIQUE,
     created_by        VARCHAR2(100) NOT NULL,
@@ -17,7 +18,7 @@ CREATE TABLE "groups" (
     oca_control       NUMBER(19) DEFAULT 0 NOT NULL
 );
 
-CREATE TABLE "users" (
+CREATE TABLE USERS (
     user_id                       NUMBER DEFAULT seq_users.NEXTVAL PRIMARY KEY,
     user_name                     VARCHAR2(100) NOT NULL UNIQUE,
     first_name                    VARCHAR2(100) NOT NULL,
@@ -38,7 +39,7 @@ CREATE TABLE "users" (
     oca_control                   NUMBER(19) DEFAULT 0 NOT NULL
 );
 
-CREATE TABLE "user_groups" (
+CREATE TABLE USER_GROUPS (
     user_id           NUMBER(19) NOT NULL,
     group_id          NUMBER(19) NOT NULL,
     created_by        VARCHAR2(100) NOT NULL,
@@ -47,9 +48,9 @@ CREATE TABLE "user_groups" (
     last_updated_date TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP NOT NULL,
     oca_control       NUMBER(19) DEFAULT 0 NOT NULL,
     CONSTRAINT pk_user_groups PRIMARY KEY (user_id, group_id),
-    CONSTRAINT fk_ug_user FOREIGN KEY (user_id) REFERENCES "users" (user_id) ON DELETE CASCADE,
-    CONSTRAINT fk_ug_group FOREIGN KEY (group_id) REFERENCES "groups" (group_id) ON DELETE CASCADE
+    CONSTRAINT fk_ug_user FOREIGN KEY (user_id) REFERENCES USERS (user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_ug_group FOREIGN KEY (group_id) REFERENCES GROUPS (group_id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_users_email ON "users" (email);
-CREATE INDEX idx_users_user_name ON "users" (user_name);
+CREATE INDEX idx_users_email ON USERS (email);
+CREATE INDEX idx_users_user_name ON USERS (user_name);

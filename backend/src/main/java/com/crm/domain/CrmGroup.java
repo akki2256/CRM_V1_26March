@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
 @Entity
-@Table(name = "groups")
+@Table(name = "GROUPS")
 public class CrmGroup {
 
     @Id

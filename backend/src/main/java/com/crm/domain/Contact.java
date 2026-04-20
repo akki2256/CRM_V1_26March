@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
 @Entity
-@Table(name = "contact")
+@Table(name = "CONTACT")
 public class Contact {
 
     @Id
@@ -21,8 +21,8 @@ public class Contact {
     @Column(name = "contact_id")
     private Long contactId;
 
-    @Column(name = "agent_name", nullable = false, length = 120)
-    private String agentName;
+    @Column(name = "agent_email", nullable = false, length = 254)
+    private String agentEmail;
 
     @Column(name = "contact_name", nullable = false, length = 120)
     private String contactName;
@@ -100,12 +100,12 @@ public class Contact {
         return contactId;
     }
 
-    public String getAgentName() {
-        return agentName;
+    public String getAgentEmail() {
+        return agentEmail;
     }
 
-    public void setAgentName(String agentName) {
-        this.agentName = agentName;
+    public void setAgentEmail(String agentEmail) {
+        this.agentEmail = agentEmail;
     }
 
     public String getContactName() {

@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
 @Entity
-@Table(name = "users")
+@Table(name = "USERS")
 public class AppUser {
 
     @Id

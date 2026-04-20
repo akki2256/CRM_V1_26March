@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
 @Entity
-@Table(name = "user_groups")
+@Table(name = "USER_GROUPS")
 public class UserGroup {
 
     @EmbeddedId

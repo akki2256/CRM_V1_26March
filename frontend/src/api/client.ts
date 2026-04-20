@@ -41,7 +41,7 @@ export type UserOption = {
 }
 
 export type ContactCreateRequest = {
-  agentName: string
+  agentEmail: string
   name: string
   countryCode: string
   phoneNumber: string
@@ -132,6 +132,29 @@ export async function login(username: string, password: string): Promise<LoginRe
     throw new Error(body.message ?? 'Login failed.')
   }
   return parseJson<LoginResponse>(res)
+}
+
+export type ContactByLabelSlice = {
+  bucket: string
+  label: string
+  count: number
+}
+
+export type ContactByLabelResponse = {
+  slices: ContactByLabelSlice[]
+  total: number
+}
+
+export async function getContactByLabelStats(token: string, period: string): Promise<ContactByLabelResponse> {
+  const params = new URLSearchParams({ period })
+  const res = await fetch(`/api/dashboard/contact-by-label?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not load contact labels.')
+  }
+  return parseJson<ContactByLabelResponse>(res)
 }
 
 export async function me(token: string): Promise<MeResponse> {
@@ -227,6 +250,316 @@ export async function getActiveUsers(token: string): Promise<UserOption[]> {
     throw new Error('Could not load active user options.')
   }
   return parseJson<UserOption[]>(res)
+}
+
+export type ContactColumnFilterOp = string
+
+export type ContactColumnFilterEntry = {
+  column: string
+  op: ContactColumnFilterOp
+  value: string
+}
+
+export type ContactSearchBody = {
+  page?: number
+  size?: number
+  sortField?: string
+  sortDirection?: 'ASC' | 'DESC'
+  filters?: ContactColumnFilterEntry[]
+}
+
+export type ContactListRow = {
+  contactId: number
+  agentEmail: string
+  contactName: string
+  countryCode: string
+  phoneNumber: string
+  email: string
+  productCode: string | null
+  purposeOfLoan: string
+  addressText: string | null
+  customerIncome: number | null
+  employmentStatusCode: string
+  mortgageYn: string
+  otherExistingLoansYn: string
+  creditCardYn: string
+  typeCode: string | null
+  segmentCode: string | null
+  statusCode: string | null
+  labelCode: string | null
+  ownerName: string | null
+  subOwnerName: string | null
+  accountName: string | null
+}
+
+export type PagedContactsResponse = {
+  content: ContactListRow[]
+  totalElements: number
+  totalPages: number
+  number: number
+  size: number
+}
+
+export async function searchContacts(token: string, body: ContactSearchBody): Promise<PagedContactsResponse> {
+  const res = await fetch('/api/contacts/search', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const bodyJson = await parseJson<{ message?: string }>(res)
+    throw new Error(bodyJson.message ?? 'Could not load contacts.')
+  }
+  return parseJson<PagedContactsResponse>(res)
+}
+
+export type DealSearchBody = {
+  page?: number
+  size?: number
+  sortField?: string
+  sortDirection?: 'ASC' | 'DESC'
+  filters?: ContactColumnFilterEntry[]
+}
+
+export type DealListRow = {
+  dealId: number
+  contactId: number
+  contactName: string
+  ownerName: string
+  subOwnerName: string
+  accountName: string
+  dealUserId: number
+  dealUserName: string
+  closingDate: string
+  stageId: number
+  stageName: string
+  amount: number
+  dealDate: string
+  pipeline: string
+  currency: string
+  purposeOfLoan: string
+  dealComments: string
+}
+
+export type DealDetail = {
+  dealId: number
+  contactId: number
+  contactName: string
+  purposeOfLoan: string
+  ownerName: string
+  subOwnerName: string
+  accountName: string
+  dealUserId: number
+  dealUserName: string
+  closingDate: string
+  stageId: number
+  stageName: string
+  amount: number
+  dealDate: string
+  pipeline: string
+  currency: string
+  dealComments: string
+  canEditContactAndAccount: boolean
+}
+
+export type DealAttachmentRow = {
+  attachmentId: number
+  fileName: string
+  uploadedAt: string
+}
+
+export type PagedDealsResponse = {
+  content: DealListRow[]
+  totalElements: number
+  totalPages: number
+  number: number
+  size: number
+}
+
+export async function searchDeals(token: string, body: DealSearchBody): Promise<PagedDealsResponse> {
+  const res = await fetch('/api/deals/search', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const bodyJson = await parseJson<{ message?: string }>(res)
+    throw new Error(bodyJson.message ?? 'Could not load deals.')
+  }
+  return parseJson<PagedDealsResponse>(res)
+}
+
+export async function getDealDetail(token: string, dealId: number): Promise<DealDetail> {
+  const res = await fetch(`/api/deals/detail/${dealId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const bodyJson = await parseJson<{ message?: string }>(res)
+    throw new Error(bodyJson.message ?? 'Could not load deal.')
+  }
+  return parseJson<DealDetail>(res)
+}
+
+export async function patchDealStage(token: string, dealId: number, stageName: 'Closed Won' | 'Closed Lost'): Promise<void> {
+  const res = await fetch(`/api/deals/detail/${dealId}/stage`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ stageName }),
+  })
+  if (!res.ok) {
+    const bodyJson = await parseJson<{ message?: string }>(res)
+    throw new Error(bodyJson.message ?? 'Could not update stage.')
+  }
+}
+
+export async function patchDealContact(token: string, dealId: number, contactId: number): Promise<void> {
+  const res = await fetch(`/api/deals/detail/${dealId}/contact`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ contactId }),
+  })
+  if (!res.ok) {
+    const bodyJson = await parseJson<{ message?: string }>(res)
+    throw new Error(bodyJson.message ?? 'Could not update contact.')
+  }
+}
+
+export async function patchDealAccount(token: string, dealId: number, accountName: string): Promise<void> {
+  const res = await fetch(`/api/deals/detail/${dealId}/account`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ accountName }),
+  })
+  if (!res.ok) {
+    const bodyJson = await parseJson<{ message?: string }>(res)
+    throw new Error(bodyJson.message ?? 'Could not update account.')
+  }
+}
+
+export async function listDealAttachments(token: string, dealId: number): Promise<DealAttachmentRow[]> {
+  const res = await fetch(`/api/deals/detail/${dealId}/attachments`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const bodyJson = await parseJson<{ message?: string }>(res)
+    throw new Error(bodyJson.message ?? 'Could not load attachments.')
+  }
+  return parseJson<DealAttachmentRow[]>(res)
+}
+
+export async function uploadDealAttachment(token: string, dealId: number, file: File): Promise<DealAttachmentRow> {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await fetch(`/api/deals/detail/${dealId}/attachments`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+  })
+  if (!res.ok) {
+    const bodyJson = await parseJson<{ message?: string }>(res)
+    throw new Error(bodyJson.message ?? 'Upload failed.')
+  }
+  return parseJson<DealAttachmentRow>(res)
+}
+
+export type DealContactOption = {
+  contactId: number
+  contactName: string
+  purposeOfLoan: string
+  accountName: string
+}
+
+export type DealUserOption = {
+  userId: number
+  label: string
+}
+
+export type DealStageOption = {
+  stageId: number
+  stageName: string
+}
+
+export type DealFormOptionsResponse = {
+  contacts: DealContactOption[]
+  users: DealUserOption[]
+  stages: DealStageOption[]
+}
+
+export type DealCreateRequest = {
+  contactId: number
+  userId: number
+  closingDate: string
+  stageId: number
+  amount: number
+  dealDate: string
+  pipeline: string
+  currency: string
+}
+
+export type DealCreateResponse = {
+  dealId: number
+  message: string
+}
+
+/** ISO code → stored value; labels shown in UI */
+export const DEAL_CURRENCY_OPTIONS: { code: string; label: string }[] = [
+  { code: 'AUD', label: 'Australian Dollar (AUD)' },
+  { code: 'USD', label: 'US Dollar (USD)' },
+  { code: 'EUR', label: 'Euro (EUR)' },
+  { code: 'GBP', label: 'British Pound (GBP)' },
+  { code: 'JPY', label: 'Japanese Yen (JPY)' },
+  { code: 'CHF', label: 'Swiss Franc (CHF)' },
+  { code: 'CAD', label: 'Canadian Dollar (CAD)' },
+  { code: 'NZD', label: 'New Zealand Dollar (NZD)' },
+  { code: 'SGD', label: 'Singapore Dollar (SGD)' },
+  { code: 'HKD', label: 'Hong Kong Dollar (HKD)' },
+  { code: 'CNY', label: 'Chinese Yuan (CNY)' },
+  { code: 'INR', label: 'Indian Rupee (INR)' },
+  { code: 'MXN', label: 'Mexican Peso (MXN)' },
+  { code: 'ZAR', label: 'South African Rand (ZAR)' },
+  { code: 'SEK', label: 'Swedish Krona (SEK)' },
+]
+
+export async function getDealFormOptions(token: string): Promise<DealFormOptionsResponse> {
+  const res = await fetch('/api/deals/form-options', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not load deal form.')
+  }
+  return parseJson<DealFormOptionsResponse>(res)
+}
+
+export async function createDeal(token: string, payload: DealCreateRequest): Promise<DealCreateResponse> {
+  const res = await fetch('/api/deals', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not save deal.')
+  }
+  return parseJson<DealCreateResponse>(res)
 }
 
 export async function createContact(

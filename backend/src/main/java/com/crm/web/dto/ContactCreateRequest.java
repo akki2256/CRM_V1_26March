@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public record ContactCreateRequest(
-        @NotBlank @Size(max = 120) @Pattern(regexp = "^[A-Za-z ]+$", message = "Agent Name can contain only letters and spaces.") String agentName,
+        @NotBlank @Email @Size(max = 254) String agentEmail,
         @NotBlank @Size(max = 120) @Pattern(regexp = "^[A-Za-z ]+$", message = "Name can contain only letters and spaces.") String name,
         @NotBlank @Size(max = 8) @Pattern(regexp = "^[0-9]+$", message = "Country code must contain digits only.") String countryCode,
         @NotBlank @Size(max = 20) @Pattern(regexp = "^[0-9]+$", message = "Phone number must contain digits only.") String phoneNumber,

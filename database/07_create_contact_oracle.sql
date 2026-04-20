@@ -3,9 +3,9 @@
 
 CREATE SEQUENCE seq_contact START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 
-CREATE TABLE contact (
+CREATE TABLE CONTACT (
     contact_id               NUMBER DEFAULT seq_contact.NEXTVAL NOT NULL,
-    agent_name               VARCHAR2(120)  NOT NULL,
+    agent_email              VARCHAR2(254)  NOT NULL,
     contact_name             VARCHAR2(120)  NOT NULL,
     country_code             VARCHAR2(8)    NOT NULL,
     phone_number             VARCHAR2(20)   NOT NULL,
@@ -36,7 +36,7 @@ CREATE TABLE contact (
 
     CONSTRAINT uq_contact_email UNIQUE (email),
 
-    CONSTRAINT chk_contact_agent_name_chars CHECK (REGEXP_LIKE(agent_name, '^[A-Za-z ]+$')),
+    CONSTRAINT chk_contact_agent_email_format CHECK (REGEXP_LIKE(agent_email, '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$')),
     CONSTRAINT chk_contact_name_chars CHECK (REGEXP_LIKE(contact_name, '^[A-Za-z ]+$')),
     CONSTRAINT chk_contact_country_code_digits CHECK (REGEXP_LIKE(country_code, '^[0-9]+$')),
     CONSTRAINT chk_contact_phone_digits CHECK (REGEXP_LIKE(phone_number, '^[0-9]+$')),
@@ -55,9 +55,9 @@ CREATE TABLE contact (
     CONSTRAINT chk_contact_oca CHECK (oca_control >= 0)
 );
 
-CREATE INDEX idx_contact_phone ON contact (country_code, phone_number);
-CREATE INDEX idx_contact_product ON contact (product_code);
-CREATE INDEX idx_contact_employment_status ON contact (employment_status_code);
-CREATE INDEX idx_contact_status_code ON contact (status_code);
-CREATE INDEX idx_contact_owner ON contact (owner_name);
-CREATE INDEX idx_contact_created_dt ON contact (created_dt);
+CREATE INDEX idx_contact_phone ON CONTACT (country_code, phone_number);
+CREATE INDEX idx_contact_product ON CONTACT (product_code);
+CREATE INDEX idx_contact_employment_status ON CONTACT (employment_status_code);
+CREATE INDEX idx_contact_status_code ON CONTACT (status_code);
+CREATE INDEX idx_contact_owner ON CONTACT (owner_name);
+CREATE INDEX idx_contact_created_dt ON CONTACT (created_dt);

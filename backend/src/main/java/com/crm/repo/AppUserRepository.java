@@ -1,10 +1,12 @@
 package com.crm.repo;
 
 import com.crm.domain.AppUser;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 
@@ -29,4 +31,28 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
             order by concat(u.firstName, ' ', u.lastName)
             """)
     List<String> findDistinctActiveFullNames();
+
+    @Query(
+            """
+            select distinct concat(u.firstName, ' ', u.lastName)
+            from AppUser u
+            where u.userId in :userIds
+            order by concat(u.firstName, ' ', u.lastName)
+            """)
+    List<String> findDistinctFullNamesByUserIds(@Param("userIds") Collection<Long> userIds);
+
+    interface ActiveUserPickRow {
+        Long getUserId();
+
+        String getFullName();
+    }
+
+    @Query(
+            """
+            select u.userId as userId, concat(u.firstName, ' ', u.lastName) as fullName
+            from AppUser u
+            where u.userStatus = com.crm.domain.UserStatus.ACTIVE
+            order by concat(u.firstName, ' ', u.lastName)
+            """)
+    List<ActiveUserPickRow> findActiveUsersForDealForm();
 }

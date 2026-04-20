@@ -31,7 +31,7 @@ public class ContactService {
         }
 
         Contact contact = new Contact();
-        contact.setAgentName(request.agentName().trim());
+        contact.setAgentEmail(request.agentEmail().trim().toLowerCase());
         contact.setContactName(request.name().trim());
         contact.setCountryCode(request.countryCode().trim());
         contact.setPhoneNumber(request.phoneNumber().trim());
