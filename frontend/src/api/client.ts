@@ -68,12 +68,43 @@ export type ContactCreateResponse = {
   message: string
 }
 
+export type ContactBulkUploadRow = {
+  agentEmail: string
+  name: string
+  countryCode: string
+  phoneNumber: string
+  email: string
+  product: string
+  purposeOfLoan: string
+  address: string
+  income: string
+  employmentStatus: string
+  mortgage: string
+  otherExistingLoans: string
+  creditCard: string
+  type: string
+  segment: string
+  status: string
+  label: string
+  owner: string
+  subOwner: string
+  account: string
+}
+
+export type ContactBulkUploadResponse = {
+  success: boolean
+  savedCount: number
+  errors: string[]
+}
+
 export type UserMaintenanceRow = {
   userId: number
   username: string
   firstName: string
   lastName: string
   userGroups: string[]
+  alignments: string[]
+  selectedAlignmentId: number | null
   email: string
   phoneNumber: string
 }
@@ -81,6 +112,11 @@ export type UserMaintenanceRow = {
 export type GroupOption = {
   groupId: number
   groupName: string
+}
+
+export type AlignmentOption = {
+  alignmentId: number
+  alignmentName: string
 }
 
 export type UserCreateRequest = {
@@ -145,6 +181,16 @@ export type ContactByLabelResponse = {
   total: number
 }
 
+export type DealOutcomeTrendPoint = {
+  day: string
+  wonCount: number
+  lostCount: number
+}
+
+export type DealOutcomeTrendResponse = {
+  points: DealOutcomeTrendPoint[]
+}
+
 export async function getContactByLabelStats(token: string, period: string): Promise<ContactByLabelResponse> {
   const params = new URLSearchParams({ period })
   const res = await fetch(`/api/dashboard/contact-by-label?${params}`, {
@@ -155,6 +201,18 @@ export async function getContactByLabelStats(token: string, period: string): Pro
     throw new Error(body.message ?? 'Could not load contact labels.')
   }
   return parseJson<ContactByLabelResponse>(res)
+}
+
+export async function getDealOutcomeTrendStats(token: string, period: string): Promise<DealOutcomeTrendResponse> {
+  const params = new URLSearchParams({ period })
+  const res = await fetch(`/api/dashboard/deal-outcome-trend?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not load deal outcome trend.')
+  }
+  return parseJson<DealOutcomeTrendResponse>(res)
 }
 
 export async function me(token: string): Promise<MeResponse> {
@@ -516,6 +574,24 @@ export type DealCreateResponse = {
   message: string
 }
 
+export type DealBulkUploadRow = {
+  contactName: string
+  userName: string
+  closingDate: string
+  stageName: string
+  amount: string
+  dealDate: string
+  pipeline: string
+  currency: string
+  dealComments: string
+}
+
+export type DealBulkUploadResponse = {
+  success: boolean
+  savedCount: number
+  errors: string[]
+}
+
 /** ISO code → stored value; labels shown in UI */
 export const DEAL_CURRENCY_OPTIONS: { code: string; label: string }[] = [
   { code: 'AUD', label: 'Australian Dollar (AUD)' },
@@ -562,6 +638,25 @@ export async function createDeal(token: string, payload: DealCreateRequest): Pro
   return parseJson<DealCreateResponse>(res)
 }
 
+export async function bulkUploadDeals(
+  token: string,
+  rows: DealBulkUploadRow[],
+): Promise<DealBulkUploadResponse> {
+  const res = await fetch('/api/deals/bulk-upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ rows }),
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Bulk upload failed.')
+  }
+  return parseJson<DealBulkUploadResponse>(res)
+}
+
 export async function createContact(
   token: string,
   payload: ContactCreateRequest,
@@ -579,6 +674,25 @@ export async function createContact(
     throw new Error(body.message ?? 'Could not save contact.')
   }
   return parseJson<ContactCreateResponse>(res)
+}
+
+export async function bulkUploadContacts(
+  token: string,
+  rows: ContactBulkUploadRow[],
+): Promise<ContactBulkUploadResponse> {
+  const res = await fetch('/api/contacts/bulk-upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ rows }),
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Bulk upload failed.')
+  }
+  return parseJson<ContactBulkUploadResponse>(res)
 }
 
 export async function listUserMaintenanceUsers(
@@ -613,6 +727,66 @@ export async function listUserMaintenanceGroups(token: string): Promise<GroupOpt
     throw new Error(body.message ?? 'Could not load groups.')
   }
   return parseJson<GroupOption[]>(res)
+}
+
+export async function listAlignmentOptions(token: string): Promise<AlignmentOption[]> {
+  const res = await fetch('/api/admin/user-maintenance/alignments', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not load alignments.')
+  }
+  return parseJson<AlignmentOption[]>(res)
+}
+
+export async function createAlignment(token: string, alignmentName: string): Promise<AlignmentOption> {
+  const res = await fetch('/api/admin/user-maintenance/alignments', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ alignmentName }),
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not create alignment.')
+  }
+  return parseJson<AlignmentOption>(res)
+}
+
+export async function patchUserAlignment(token: string, userId: number, alignmentId: number): Promise<void> {
+  const res = await fetch(`/api/admin/user-maintenance/users/${userId}/alignment`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ alignmentId }),
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not update alignment.')
+  }
+}
+
+export async function sendExportOnMail(
+  token: string,
+  payload: { fileName: string; mimeType: string; base64Content: string },
+): Promise<void> {
+  const res = await fetch('/api/exports/email', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not send export email.')
+  }
 }
 
 export async function createMaintenanceUser(

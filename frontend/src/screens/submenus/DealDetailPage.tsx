@@ -33,11 +33,6 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'logs', label: 'Logs' },
 ]
 
-function formatMoney(amount: number, currency: string): string {
-  const sym = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : `${currency} `
-  return `${sym}${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-
 function formatDealAge(dealDateIso: string): string {
   if (!dealDateIso) return '—'
   const start = new Date(dealDateIso.includes('T') ? dealDateIso : `${dealDateIso}T00:00:00Z`)
@@ -220,11 +215,6 @@ export default function DealDetailPage({ dealId, onBack, goToSalesAccount }: Pro
             <div className="deal-sideband-value">{detail.contactName}</div>
           </div>
 
-          <div className="deal-sideband-block">
-            <div className="deal-sideband-label">Deal amount</div>
-            <div className="deal-sideband-value">{formatMoney(detail.amount, detail.currency)}</div>
-          </div>
-
           <div className="deal-sideband-actions">
             <button type="button" className="deal-won-btn" disabled={busy} onClick={() => void onWonLost(true)}>
               👍 Deal Won
@@ -295,8 +285,8 @@ export default function DealDetailPage({ dealId, onBack, goToSalesAccount }: Pro
             <div className="deal-sideband-value">{sliceDate(detail.dealDate)}</div>
           </div>
           <div className="deal-sideband-block">
-            <div className="deal-sideband-label">Account owner (deal user)</div>
-            <div className="deal-sideband-value">{detail.dealUserName}</div>
+            <div className="deal-sideband-label">Account owner</div>
+            <div className="deal-sideband-value">{detail.ownerName}</div>
           </div>
           <div className="deal-sideband-block">
             <div className="deal-sideband-label">Quote amount</div>

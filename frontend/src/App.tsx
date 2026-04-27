@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
   changePasswordAfterReset,
+  createAlignment,
   createMaintenanceUser,
   createContact,
   createDeal,
@@ -14,18 +15,22 @@ import {
   getAdminOwners,
   getCodeReference,
   getToken,
+  patchUserAlignment,
+  listAlignmentOptions,
   listUserMaintenanceGroups,
   listUserMaintenanceUsers,
   login,
   logout,
   me,
   setToken,
+  type AlignmentOption,
   type DealFormOptionsResponse,
   type GroupOption,
   type MeResponse,
   type UserMaintenanceRow,
 } from './api/client'
 import ContactByLabelWidget from './components/ContactByLabelWidget'
+import DealOutcomeTrendWidget from './components/DealOutcomeTrendWidget'
 import Spinner from './components/Spinner'
 import { submenuRegistry } from './screens/submenus/submenuRegistry'
 
@@ -33,7 +38,16 @@ type ForgotStep = 'menu' | 'password' | 'userid'
 type MenuKey = 'dashboard' | 'sales' | 'marketing' | 'logs' | 'admin'
 type CreateNewOption = 'contact' | 'deal'
 type YesNo = 'Yes' | 'No'
-type TextOperator = 'eq' | 'starts_with' | 'ends_with' | 'not_eq'
+type ThemeName = 'navy' | 'slate-blue' | 'midnight-purple' | 'forest-night' | 'frost-light' | 'sand-light'
+
+const THEME_OPTIONS: { value: ThemeName; label: string }[] = [
+  { value: 'navy', label: '🔵 Deep Navy' },
+  { value: 'slate-blue', label: '⚪ Bluish Grey' },
+  { value: 'midnight-purple', label: '🟣 Midnight Purple' },
+  { value: 'forest-night', label: '🟢 Forest Night' },
+  { value: 'frost-light', label: '🔷 Frost Light' },
+  { value: 'sand-light', label: '🟠 Sand Light' },
+]
 
 type ContactForm = {
   agentEmail: string
@@ -56,20 +70,6 @@ type ContactForm = {
   owner: string
   subOwner: string
   account: string
-}
-
-type UserSearchForm = {
-  firstName: string
-  firstNameOp: TextOperator
-  lastName: string
-  lastNameOp: TextOperator
-  username: string
-  usernameOp: TextOperator
-  userGroup: string
-  email: string
-  emailOp: TextOperator
-  phone: string
-  phoneOp: TextOperator
 }
 
 type AddUserForm = {
@@ -96,10 +96,6 @@ const MENU_ITEMS: { key: MenuKey; label: string; icon: string; submenus: string[
       'Deals',
       'Sales',
       'Activities',
-      'Quotes',
-      'Invoices',
-      'Pricebook',
-      'Products',
     ],
   },
   { key: 'marketing', label: 'Marketing', icon: '📣', submenus: ['Forms'] },
@@ -109,6 +105,7 @@ const MENU_ITEMS: { key: MenuKey; label: string; icon: string; submenus: string[
 
 const WIDGET_CHOICES = [
   'Contact by Label',
+  'Deals Won/Lost Trend',
   'Revenue Summary',
   'Sales Funnel',
   'Pipeline by Stage',
@@ -117,11 +114,16 @@ const WIDGET_CHOICES = [
   'Quote Conversion',
 ]
 
-const OPERATOR_OPTIONS: { label: string; value: TextOperator }[] = [
-  { label: 'Equal to', value: 'eq' },
-  { label: 'Starts with', value: 'starts_with' },
-  { label: 'Ends with', value: 'ends_with' },
-  { label: 'Not equals to', value: 'not_eq' },
+type UserColumnId = 'username' | 'firstName' | 'lastName' | 'userGroups' | 'alignments' | 'email' | 'phoneNumber'
+
+const USER_COLUMN_META: { id: UserColumnId; label: string }[] = [
+  { id: 'username', label: 'Username' },
+  { id: 'firstName', label: 'First Name' },
+  { id: 'lastName', label: 'Last Name' },
+  { id: 'userGroups', label: 'User Group' },
+  { id: 'alignments', label: 'Alignment' },
+  { id: 'email', label: 'Email' },
+  { id: 'phoneNumber', label: 'Phone Number' },
 ]
 
 const CONTACT_FORM_PRODUCT_OPTIONS = ['Business Loan', 'Car Loan', 'Personal Loan', 'Equity Loan'] as const
@@ -173,20 +175,6 @@ const INITIAL_CONTACT_FORM: ContactForm = {
   account: '',
 }
 
-const INITIAL_USER_SEARCH_FORM: UserSearchForm = {
-  firstName: '',
-  firstNameOp: 'eq',
-  lastName: '',
-  lastNameOp: 'eq',
-  username: '',
-  usernameOp: 'eq',
-  userGroup: '',
-  email: '',
-  emailOp: 'eq',
-  phone: '',
-  phoneOp: 'eq',
-}
-
 const INITIAL_ADD_USER_FORM: AddUserForm = {
   username: '',
   firstName: '',
@@ -224,6 +212,13 @@ function emptyDealForm(profile: MeResponse | null): DealForm {
 }
 
 function App() {
+  const [theme, setTheme] = useState<ThemeName>(() => {
+    const saved = localStorage.getItem('crm_theme')
+    if (THEME_OPTIONS.some((opt) => opt.value === saved)) {
+      return saved as ThemeName
+    }
+    return 'navy'
+  })
   const [token, setTokenState] = useState<string | null>(() => getToken())
   const [profile, setProfile] = useState<MeResponse | null>(null)
   const [username, setUsername] = useState('')
@@ -280,9 +275,32 @@ function App() {
   const [salesAccountHighlight, setSalesAccountHighlight] = useState<string | null>(null)
   const [userRows, setUserRows] = useState<UserMaintenanceRow[]>([])
   const [groupsOptions, setGroupsOptions] = useState<GroupOption[]>([])
+  const [alignmentOptions, setAlignmentOptions] = useState<AlignmentOption[]>([])
   const [userMaintenanceLoading, setUserMaintenanceLoading] = useState(false)
-  const [searchUsersOpen, setSearchUsersOpen] = useState(false)
-  const [searchUsersForm, setSearchUsersForm] = useState<UserSearchForm>(INITIAL_USER_SEARCH_FORM)
+  const [addAlignmentOpen, setAddAlignmentOpen] = useState(false)
+  const [alignmentNameDraft, setAlignmentNameDraft] = useState('')
+  const [addAlignmentError, setAddAlignmentError] = useState<string | null>(null)
+  const [savingAlignmentUserId, setSavingAlignmentUserId] = useState<number | null>(null)
+  const [addAlignmentSubmitting, setAddAlignmentSubmitting] = useState(false)
+  const [userColumnFilterDraft, setUserColumnFilterDraft] = useState<Record<UserColumnId, string>>({
+    username: '',
+    firstName: '',
+    lastName: '',
+    userGroups: '',
+    alignments: '',
+    email: '',
+    phoneNumber: '',
+  })
+  const [appliedUserColumnFilters, setAppliedUserColumnFilters] = useState<Record<UserColumnId, string>>({
+    username: '',
+    firstName: '',
+    lastName: '',
+    userGroups: '',
+    alignments: '',
+    email: '',
+    phoneNumber: '',
+  })
+  const [hoveredUserHeader, setHoveredUserHeader] = useState<UserColumnId | null>(null)
   const [addUserOpen, setAddUserOpen] = useState(false)
   const [addUserForm, setAddUserForm] = useState<AddUserForm>(INITIAL_ADD_USER_FORM)
   const [addUserTouched, setAddUserTouched] = useState<Record<string, boolean>>({})
@@ -291,7 +309,6 @@ function App() {
   const [displayUserOpen, setDisplayUserOpen] = useState(false)
   const [displayUserRow, setDisplayUserRow] = useState<UserMaintenanceRow | null>(null)
   const [currentUsersPage, setCurrentUsersPage] = useState(1)
-  const [searchUsersSubmitting, setSearchUsersSubmitting] = useState(false)
   const [addUserSubmitting, setAddUserSubmitting] = useState(false)
 
   const [widgetDropdownOpen, setWidgetDropdownOpen] = useState(false)
@@ -314,6 +331,11 @@ function App() {
       setChangePwdOpen(true)
     }
   }, [])
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('crm_theme', theme)
+  }, [theme])
 
   useEffect(() => {
     if (!token) {
@@ -377,8 +399,14 @@ function App() {
     return `crm_dashboard_widgets_${profile.username.toLowerCase()}`
   }, [profile?.username])
 
-  const isAdminUser = useMemo(
-    () => Boolean(profile?.groups?.some((groupName) => groupName.toLowerCase() === 'admin')),
+  const isAdminOrManagerUser = useMemo(
+    () =>
+      Boolean(
+        profile?.groups?.some((groupName) => {
+          const g = groupName.toLowerCase()
+          return g === 'admin' || g === 'manager'
+        }),
+      ),
     [profile?.groups],
   )
 
@@ -411,27 +439,26 @@ function App() {
     setWidgetDropdownOpen(false)
   }
 
-  const loadUserMaintenanceData = useCallback(
-    async (filters?: Partial<UserSearchForm>) => {
-      if (!token || !isAdminUser) {
-        return
-      }
-      setUserMaintenanceLoading(true)
-      try {
-        const [users, groups] = await Promise.all([
-          listUserMaintenanceUsers(token, filters),
-          listUserMaintenanceGroups(token),
-        ])
-        setUserRows(users)
-        setGroupsOptions(groups)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not load users.')
-      } finally {
-        setUserMaintenanceLoading(false)
-      }
-    },
-    [token, isAdminUser],
-  )
+  const loadUserMaintenanceData = useCallback(async () => {
+    if (!token || !isAdminOrManagerUser) {
+      return
+    }
+    setUserMaintenanceLoading(true)
+    try {
+      const [users, groups, alignments] = await Promise.all([
+        listUserMaintenanceUsers(token),
+        listUserMaintenanceGroups(token),
+        listAlignmentOptions(token),
+      ])
+      setUserRows(users)
+      setGroupsOptions(groups)
+      setAlignmentOptions(alignments)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load users.')
+    } finally {
+      setUserMaintenanceLoading(false)
+    }
+  }, [token, isAdminOrManagerUser])
 
   const loadDealFormOptions = useCallback(async () => {
     if (!token) {
@@ -742,17 +769,6 @@ function App() {
     setAddUserTouched((prev) => ({ ...prev, [field]: true }))
   }
 
-  async function submitUserSearch(e: React.FormEvent) {
-    e.preventDefault()
-    setSearchUsersSubmitting(true)
-    try {
-      await loadUserMaintenanceData(searchUsersForm)
-      setSearchUsersOpen(false)
-    } finally {
-      setSearchUsersSubmitting(false)
-    }
-  }
-
   async function submitAddUser(e: React.FormEvent) {
     e.preventDefault()
     setAddUserSubmitTried(true)
@@ -770,12 +786,72 @@ function App() {
       setAddUserSubmitTried(false)
       setPreferencesStatus(`${result.message} (ID: ${result.userId})`)
       setTimeout(() => setPreferencesStatus(null), 3000)
-      await loadUserMaintenanceData(searchUsersForm)
+      await loadUserMaintenanceData()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create user.')
     } finally {
       setAddUserSubmitting(false)
     }
+  }
+
+  async function submitAddAlignment(e: React.FormEvent) {
+    e.preventDefault()
+    setAddAlignmentError(null)
+    if (!token) {
+      setAddAlignmentError('Your session has expired. Please sign in again.')
+      return
+    }
+    if (!alignmentNameDraft.trim()) {
+      setAddAlignmentError('Alignment Name is required.')
+      return
+    }
+    setAddAlignmentSubmitting(true)
+    try {
+      const created = await createAlignment(token, alignmentNameDraft.trim())
+      setAlignmentOptions((prev) => [...prev, created].sort((a, b) => a.alignmentName.localeCompare(b.alignmentName)))
+      setAddAlignmentOpen(false)
+      setAlignmentNameDraft('')
+      setPreferencesStatus(`Alignment "${created.alignmentName}" created.`)
+      setTimeout(() => setPreferencesStatus(null), 2400)
+      await loadUserMaintenanceData()
+    } catch (err) {
+      setAddAlignmentError(err instanceof Error ? err.message : 'Could not create alignment.')
+    } finally {
+      setAddAlignmentSubmitting(false)
+    }
+  }
+
+  async function changeUserAlignment(userId: number, alignmentIdRaw: string) {
+    if (!token) {
+      setError('Your session has expired. Please sign in again.')
+      return
+    }
+    const alignmentId = Number(alignmentIdRaw)
+    if (!Number.isFinite(alignmentId)) return
+    setSavingAlignmentUserId(userId)
+    try {
+      await patchUserAlignment(token, userId, alignmentId)
+      setUserRows((prev) =>
+        prev.map((row) => {
+          if (row.userId !== userId) return row
+          const selected = alignmentOptions.find((a) => a.alignmentId === alignmentId)
+          return {
+            ...row,
+            selectedAlignmentId: alignmentId,
+            alignments: selected ? [selected.alignmentName] : row.alignments,
+          }
+        }),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update alignment.')
+    } finally {
+      setSavingAlignmentUserId(null)
+    }
+  }
+
+  function applyUserHeaderContains(col: UserColumnId) {
+    setAppliedUserColumnFilters((prev) => ({ ...prev, [col]: userColumnFilterDraft[col].trim() }))
+    setCurrentUsersPage(1)
   }
 
   async function openDisplayUser(userId: number) {
@@ -798,6 +874,7 @@ function App() {
       contactOpenedFromDealRef.current = false
       setContactForm((prev) => ({
         ...prev,
+        agentEmail: '',
         countryCode: COUNTRY_PHONE_OPTIONS.some((c) => c.value === prev.countryCode) ? prev.countryCode : '61',
         product: (CONTACT_FORM_PRODUCT_OPTIONS as readonly string[]).includes(prev.product)
           ? prev.product
@@ -858,6 +935,7 @@ function App() {
     setContactOpen(true)
     setContactForm((prev) => ({
       ...prev,
+      agentEmail: '',
       countryCode: COUNTRY_PHONE_OPTIONS.some((c) => c.value === prev.countryCode) ? prev.countryCode : '61',
       product: (CONTACT_FORM_PRODUCT_OPTIONS as readonly string[]).includes(prev.product)
         ? prev.product
@@ -1098,11 +1176,26 @@ function App() {
   const sessionLoading = Boolean(token && !profile)
   const showDashboard = Boolean(token && profile)
   const usersPageSize = 10
+  const filteredUserRows = useMemo(() => {
+    return userRows.filter((row) =>
+      USER_COLUMN_META.every((col) => {
+        const q = appliedUserColumnFilters[col.id].trim().toLowerCase()
+        if (!q) return true
+        const value =
+          col.id === 'userGroups'
+            ? row.userGroups.join(', ')
+            : col.id === 'alignments'
+              ? row.alignments.join(', ')
+              : String(row[col.id] ?? '')
+        return value.toLowerCase().includes(q)
+      }),
+    )
+  }, [userRows, appliedUserColumnFilters])
   const pagedUserRows = useMemo(() => {
     const start = (currentUsersPage - 1) * usersPageSize
-    return userRows.slice(start, start + usersPageSize)
-  }, [userRows, currentUsersPage])
-  const totalUsersPages = Math.max(1, Math.ceil(userRows.length / usersPageSize))
+    return filteredUserRows.slice(start, start + usersPageSize)
+  }, [filteredUserRows, currentUsersPage])
+  const totalUsersPages = Math.max(1, Math.ceil(filteredUserRows.length / usersPageSize))
   const activeSubmenu = activeSubmenuByMenu[activeMenu]
   const submenuKey = activeSubmenu ? `${activeMenu}:${activeSubmenu}` : ''
   const SubmenuComponent = submenuRegistry[submenuKey]
@@ -1143,7 +1236,7 @@ function App() {
               <div className="left-nav-title">CRM Menu</div>
               <button type="button" className="nav-expand-btn" onClick={expandOrCollapseAllMenus}>Expand options</button>
             </div>
-            {MENU_ITEMS.filter((item) => item.key !== 'admin' || isAdminUser).map((item) => (
+            {MENU_ITEMS.filter((item) => item.key !== 'admin' || isAdminOrManagerUser).map((item) => (
               <div key={item.key} className="menu-block">
                 <div className="menu-main-row">
                   <button type="button" className={`menu-main ${activeMenu === item.key ? 'active' : ''}`} onClick={() => handleMainMenuClick(item)}>
@@ -1173,6 +1266,21 @@ function App() {
                 <p className="muted">Signed in as <strong>{profile?.firstName} {profile?.lastName}</strong> ({profile?.username})</p>
               </div>
               <div className="top-actions">
+                <label className="theme-select-wrap">
+                  <span>Theme</span>
+                  <select
+                    className="theme-select"
+                    value={theme}
+                    onChange={(e) => setTheme(e.target.value as ThemeName)}
+                    title="Choose dashboard color theme"
+                  >
+                    {THEME_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <div className="create-new-wrap" ref={createNewRef}>
                   <button
                     type="button"
@@ -1217,31 +1325,73 @@ function App() {
               </div>
             </header>
 
-            {activeMenu === 'admin' && activeSubmenuByMenu.admin === 'User Maintenance' && isAdminUser ? (
+            {activeMenu === 'admin' && activeSubmenuByMenu.admin === 'User Maintenance' && isAdminOrManagerUser ? (
               <section className="user-maintenance">
                 <div className="dashboard-actions">
                   <button type="button" className="secondary" onClick={() => setAddUserOpen(true)}>Add User</button>
-                  <button type="button" className="secondary" onClick={() => setSearchUsersOpen(true)}>Search users</button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => {
+                      setAddAlignmentError(null)
+                      setAlignmentNameDraft('')
+                      setAddAlignmentOpen(true)
+                    }}
+                  >
+                    Add New Alignment
+                  </button>
                 </div>
                 {preferencesStatus && <p className="info">{preferencesStatus}</p>}
                 <div className="table-wrap">
                   <table className="result-table">
                     <thead>
                       <tr>
-                        <th>Username</th>
-                        <th>First Name</th>
-                        <th>Last Name</th>
-                        <th>User Group</th>
-                        <th>Email</th>
-                        <th>Phone Number</th>
+                        {USER_COLUMN_META.map((col) => (
+                          <th
+                            key={col.id}
+                            className="contacts-header-cell"
+                            onMouseEnter={() => setHoveredUserHeader(col.id)}
+                            onMouseLeave={() => setHoveredUserHeader((prev) => (prev === col.id ? null : prev))}
+                          >
+                            <span>{col.label}</span>
+                            {hoveredUserHeader === col.id && (
+                              <div className="contacts-header-quick-filter">
+                                <input
+                                  type="text"
+                                  className="contacts-header-quick-input"
+                                  placeholder="Search"
+                                  value={userColumnFilterDraft[col.id]}
+                                  onChange={(e) =>
+                                    setUserColumnFilterDraft((prev) => ({ ...prev, [col.id]: e.target.value }))
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault()
+                                      applyUserHeaderContains(col.id)
+                                    }
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  className="contacts-header-quick-btn"
+                                  onClick={() => applyUserHeaderContains(col.id)}
+                                  aria-label={`Search ${col.label}`}
+                                  title={`Search ${col.label}`}
+                                >
+                                  🔍
+                                </button>
+                              </div>
+                            )}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
                       {userMaintenanceLoading && (
-                        <tr><td colSpan={6}><div className="loading-inline"><Spinner size="sm" /> Loading users...</div></td></tr>
+                        <tr><td colSpan={7}><div className="loading-inline"><Spinner size="sm" /> Loading users...</div></td></tr>
                       )}
-                      {!userMaintenanceLoading && userRows.length === 0 && (
-                        <tr><td colSpan={6}>No users found.</td></tr>
+                      {!userMaintenanceLoading && filteredUserRows.length === 0 && (
+                        <tr><td colSpan={7}>No users found.</td></tr>
                       )}
                       {!userMaintenanceLoading && pagedUserRows.map((user) => (
                         <tr key={user.userId}>
@@ -1256,6 +1406,23 @@ function App() {
                           <td>{user.firstName}</td>
                           <td>{user.lastName}</td>
                           <td>{user.userGroups.join(', ')}</td>
+                          <td>
+                            <select
+                              value={user.selectedAlignmentId ?? ''}
+                              onMouseEnter={(e) => e.currentTarget.focus()}
+                              onChange={(e) => void changeUserAlignment(user.userId, e.target.value)}
+                              disabled={savingAlignmentUserId === user.userId}
+                            >
+                              <option value="" disabled>
+                                Select
+                              </option>
+                              {alignmentOptions.map((opt) => (
+                                <option key={opt.alignmentId} value={opt.alignmentId}>
+                                  {opt.alignmentName}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
                           <td>{user.email}</td>
                           <td>{user.phoneNumber}</td>
                         </tr>
@@ -1316,7 +1483,9 @@ function App() {
                       )}
                       {selectedWidgets.map((widgetName) =>
                         widgetName === 'Contact by Label' ? (
-                          <ContactByLabelWidget key={widgetName} />
+                          <ContactByLabelWidget key={widgetName} username={profile?.username ?? null} />
+                        ) : widgetName === 'Deals Won/Lost Trend' ? (
+                          <DealOutcomeTrendWidget key={widgetName} username={profile?.username ?? null} />
                         ) : (
                           <article key={widgetName} className="widget-card">
                             <h3>{widgetName}</h3>
@@ -1629,20 +1798,32 @@ function App() {
         </div>
       )}
 
-      {searchUsersOpen && (
-        <div className="modal-backdrop" role="presentation" onClick={() => setSearchUsersOpen(false)}>
+      {addAlignmentOpen && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setAddAlignmentOpen(false)}>
           <div className="modal user-maintenance-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <h2>Search users</h2>
-            <form className="stack" onSubmit={submitUserSearch}>
-              <div className="filter-row"><span>First Name</span><select value={searchUsersForm.firstNameOp} onChange={(e) => setSearchUsersForm((p) => ({ ...p, firstNameOp: e.target.value as TextOperator }))}>{OPERATOR_OPTIONS.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}</select><input value={searchUsersForm.firstName} onChange={(e) => setSearchUsersForm((p) => ({ ...p, firstName: e.target.value }))} /></div>
-              <div className="filter-row"><span>Last Name</span><select value={searchUsersForm.lastNameOp} onChange={(e) => setSearchUsersForm((p) => ({ ...p, lastNameOp: e.target.value as TextOperator }))}>{OPERATOR_OPTIONS.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}</select><input value={searchUsersForm.lastName} onChange={(e) => setSearchUsersForm((p) => ({ ...p, lastName: e.target.value }))} /></div>
-              <div className="filter-row"><span>User Name</span><select value={searchUsersForm.usernameOp} onChange={(e) => setSearchUsersForm((p) => ({ ...p, usernameOp: e.target.value as TextOperator }))}>{OPERATOR_OPTIONS.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}</select><input value={searchUsersForm.username} onChange={(e) => setSearchUsersForm((p) => ({ ...p, username: e.target.value }))} /></div>
-              <div className="filter-row"><span>User Group</span><select value={searchUsersForm.userGroup} onChange={(e) => setSearchUsersForm((p) => ({ ...p, userGroup: e.target.value }))}><option value="">All</option>{groupsOptions.map((g) => <option key={g.groupId} value={g.groupName}>{g.groupName}</option>)}</select><input value="" disabled placeholder="Select from dropdown" /></div>
-              <div className="filter-row"><span>Email</span><select value={searchUsersForm.emailOp} onChange={(e) => setSearchUsersForm((p) => ({ ...p, emailOp: e.target.value as TextOperator }))}>{OPERATOR_OPTIONS.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}</select><input value={searchUsersForm.email} onChange={(e) => setSearchUsersForm((p) => ({ ...p, email: e.target.value }))} /></div>
-              <div className="filter-row"><span>Phone</span><select value={searchUsersForm.phoneOp} onChange={(e) => setSearchUsersForm((p) => ({ ...p, phoneOp: e.target.value as TextOperator }))}>{OPERATOR_OPTIONS.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}</select><input value={searchUsersForm.phone} onChange={(e) => setSearchUsersForm((p) => ({ ...p, phone: e.target.value }))} /></div>
+            <h2>Add New Alignment</h2>
+            <form className="stack" onSubmit={submitAddAlignment}>
+              <label className="field">
+                <span>Alignment Name</span>
+                <input value={alignmentNameDraft} onChange={(e) => setAlignmentNameDraft(e.target.value)} />
+              </label>
+              {addAlignmentError && <p className="error">{addAlignmentError}</p>}
               <div className="row">
-                <button type="button" className="secondary" onClick={() => { setSearchUsersForm(INITIAL_USER_SEARCH_FORM); void loadUserMaintenanceData(); setSearchUsersOpen(false) }}>Reset</button>
-                <button type="submit" className="primary" disabled={searchUsersSubmitting}>{searchUsersSubmitting ? <><Spinner size="sm" /> Searching...</> : 'Search'}</button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    setAddAlignmentOpen(false)
+                    setAlignmentNameDraft('')
+                    setAddAlignmentError(null)
+                  }}
+                  disabled={addAlignmentSubmitting}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="primary" disabled={addAlignmentSubmitting}>
+                  {addAlignmentSubmitting ? <><Spinner size="sm" /> Saving...</> : 'Save'}
+                </button>
               </div>
             </form>
           </div>

@@ -27,6 +27,15 @@ const PERIODS: { value: string; label: string }[] = [
   { value: 'ALL', label: 'All time' },
 ]
 
+const DEFAULT_PERIOD = 'LAST_MONTH'
+type PersistedWidgetState = {
+  period: string
+}
+
+type Props = {
+  username?: string | null
+}
+
 function countForBucket(slices: ContactByLabelSlice[], bucket: string): number {
   return slices.find((s) => s.bucket === bucket)?.count ?? 0
 }
@@ -51,11 +60,44 @@ function buildConicGradient(slices: ContactByLabelSlice[], total: number): strin
   return `conic-gradient(${parts.join(', ')})`
 }
 
-export default function ContactByLabelWidget() {
-  const [period, setPeriod] = useState('LAST_MONTH')
+export default function ContactByLabelWidget({ username }: Props) {
+  const [period, setPeriod] = useState(DEFAULT_PERIOD)
   const [data, setData] = useState<ContactByLabelResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const storageKey = useMemo(
+    () => `crm_widget_contact_by_label_${(username ?? 'default').toLowerCase()}`,
+    [username],
+  )
+
+  const readPersisted = useCallback((): PersistedWidgetState | null => {
+    const raw = localStorage.getItem(storageKey)
+    if (!raw) return null
+    try {
+      const parsed = JSON.parse(raw) as Partial<PersistedWidgetState>
+      const validPeriod = PERIODS.some((p) => p.value === parsed.period) ? String(parsed.period) : DEFAULT_PERIOD
+      return { period: validPeriod }
+    } catch {
+      return null
+    }
+  }, [storageKey])
+
+  const savePersisted = useCallback(
+    (next: PersistedWidgetState) => {
+      localStorage.setItem(storageKey, JSON.stringify(next))
+    },
+    [storageKey],
+  )
+
+  useEffect(() => {
+    const persisted = readPersisted()
+    if (!persisted) {
+      setPeriod(DEFAULT_PERIOD)
+      return
+    }
+    setPeriod(persisted.period)
+  }, [readPersisted])
 
   const load = useCallback(async () => {
     const t = getToken()
@@ -81,10 +123,13 @@ export default function ContactByLabelWidget() {
     void load()
   }, [load])
 
+  useEffect(() => {
+    savePersisted({ period })
+  }, [period, savePersisted])
+
   const slices = data?.slices ?? []
   const total = data?.total ?? 0
   const donutBg = useMemo(() => buildConicGradient(slices, total), [slices, total])
-
   return (
     <article className="widget-card widget-contact-by-label">
       <header className="widget-contact-by-label-header">
