@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -136,6 +137,12 @@ public class ContactListQueryService {
 
     @Transactional(readOnly = true)
     public Contact requireVisibleContact(long contactId, Authentication authentication) {
+        return findVisibleContact(contactId, authentication)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Contact not found or not accessible."));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<Contact> findVisibleContact(long contactId, Authentication authentication) {
         if (authentication == null || !(authentication.getPrincipal() instanceof JwtUserPrincipal principal)) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Authentication required.");
         }
@@ -146,9 +153,9 @@ public class ContactListQueryService {
                 visibilityPredicate(root, cb, visibilityModel), cb.equal(root.get("contactId"), contactId));
         Page<Contact> page = contactRepository.findAll(spec, PageRequest.of(0, 1));
         if (page.isEmpty()) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "Contact not found or not accessible.");
+            return Optional.empty();
         }
-        return page.getContent().getFirst();
+        return Optional.of(page.getContent().getFirst());
     }
 
     private VisibilityModel resolveVisibility(Long userId, List<String> groups) {

@@ -15,6 +15,9 @@ import com.crm.security.JwtUserPrincipal;
 import com.crm.web.ApiException;
 import com.crm.web.dto.DealAccountPatchRequest;
 import com.crm.web.dto.DealAttachmentRowDto;
+import com.crm.web.dto.DealBulkUploadRequest;
+import com.crm.web.dto.DealBulkUploadResponse;
+import com.crm.web.dto.DealBulkUploadRowRequest;
 import com.crm.web.dto.DealContactPatchRequest;
 import com.crm.web.dto.DealCreateRequest;
 import com.crm.web.dto.DealCreateResponse;
@@ -29,7 +32,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
@@ -248,6 +256,244 @@ public class DealService {
 
         dealRepository.save(deal);
         return new DealCreateResponse(deal.getDealId(), "Deal created successfully.");
+    }
+
+    @Transactional
+    public DealBulkUploadResponse bulkUpload(DealBulkUploadRequest request, Authentication authentication) {
+        if (!canEditContactAndAccount(authentication)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Only administrators and managers can bulk upload deals.");
+        }
+        if (request == null || request.rows() == null || request.rows().isEmpty()) {
+            return new DealBulkUploadResponse(false, 0, List.of("No rows found to upload."));
+        }
+
+        String actor = actorUsername(authentication);
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        List<String> errors = new ArrayList<>();
+        List<Deal> toSave = new ArrayList<>();
+        Map<String, List<Long>> visibleContactIdsByName = new HashMap<>();
+        for (var option : contactListQueryService.listContactsForDealForm(authentication)) {
+            String key = normalizeLookupKey(option.contactName());
+            if (key.isEmpty()) {
+                continue;
+            }
+            visibleContactIdsByName.computeIfAbsent(key, k -> new ArrayList<>()).add(option.contactId());
+        }
+        Map<String, List<Long>> activeUserIdsByName = new HashMap<>();
+        for (var option : appUserRepository.findActiveUsersForDealForm()) {
+            String key = normalizeLookupKey(option.getFullName());
+            if (key.isEmpty()) {
+                continue;
+            }
+            activeUserIdsByName.computeIfAbsent(key, k -> new ArrayList<>()).add(option.getUserId());
+        }
+        Map<String, List<Long>> stageIdsByName = new HashMap<>();
+        for (var stage : stageRepository.findAllByOrderByStageNameAsc()) {
+            String key = normalizeLookupKey(stage.getStageName());
+            if (key.isEmpty()) {
+                continue;
+            }
+            stageIdsByName.computeIfAbsent(key, k -> new ArrayList<>()).add(stage.getStageId());
+        }
+        int idx = 1;
+        for (DealBulkUploadRowRequest row : request.rows()) {
+            validateAndBuildBulkRow(
+                    row,
+                    idx,
+                    authentication,
+                    actor,
+                    now,
+                    visibleContactIdsByName,
+                    activeUserIdsByName,
+                    stageIdsByName,
+                    errors,
+                    toSave);
+            idx += 1;
+        }
+        if (!errors.isEmpty()) {
+            return new DealBulkUploadResponse(false, 0, errors);
+        }
+        dealRepository.saveAll(toSave);
+        return new DealBulkUploadResponse(true, toSave.size(), List.of());
+    }
+
+    private void validateAndBuildBulkRow(
+            DealBulkUploadRowRequest row,
+            int rowNumber,
+            Authentication authentication,
+            String actor,
+            LocalDateTime now,
+            Map<String, List<Long>> visibleContactIdsByName,
+            Map<String, List<Long>> activeUserIdsByName,
+            Map<String, List<Long>> stageIdsByName,
+            List<String> errors,
+            List<Deal> toSave) {
+        int errorsBefore = errors.size();
+        if (row == null) {
+            errors.add("Row " + rowNumber + ": empty row.");
+            return;
+        }
+        if (row.contactName() == null || row.contactName().trim().isEmpty()) {
+            errors.add("Row " + rowNumber + ": Contact is required.");
+        }
+        if (row.userName() == null || row.userName().trim().isEmpty()) {
+            errors.add("Row " + rowNumber + ": Deal user is required.");
+        }
+        if (row.stageName() == null || row.stageName().trim().isEmpty()) {
+            errors.add("Row " + rowNumber + ": Stage is required.");
+        }
+        if (row.pipeline() == null || row.pipeline().trim().isEmpty()) {
+            errors.add("Row " + rowNumber + ": Pipeline is required.");
+        }
+        if (row.currency() == null || row.currency().trim().isEmpty()) {
+            errors.add("Row " + rowNumber + ": Currency is required.");
+        }
+
+        java.time.LocalDate closingDate;
+        java.time.LocalDate dealDate;
+        java.math.BigDecimal amount;
+        try {
+            closingDate = java.time.LocalDate.parse(row.closingDate());
+        } catch (DateTimeParseException | NullPointerException ex) {
+            errors.add("Row " + rowNumber + ": Closing date must be YYYY-MM-DD.");
+            closingDate = null;
+        }
+        try {
+            dealDate = java.time.LocalDate.parse(row.dealDate());
+        } catch (DateTimeParseException | NullPointerException ex) {
+            errors.add("Row " + rowNumber + ": Deal date must be YYYY-MM-DD.");
+            dealDate = null;
+        }
+        try {
+            amount = new java.math.BigDecimal(row.amount());
+            if (amount.signum() < 0) {
+                errors.add("Row " + rowNumber + ": Amount cannot be negative.");
+            }
+        } catch (NumberFormatException | NullPointerException ex) {
+            errors.add("Row " + rowNumber + ": Amount must be numeric.");
+            amount = null;
+        }
+
+        Contact contact = null;
+        int contactErrorsBefore = errors.size();
+        Long contactId = resolveVisibleContactId(row.contactName(), visibleContactIdsByName, rowNumber, errors);
+        if (contactId != null) {
+            contact = contactListQueryService.findVisibleContact(contactId, authentication).orElse(null);
+        }
+        if (contact == null && errors.size() == contactErrorsBefore) {
+            errors.add("Row " + rowNumber + ": Contact not found or not visible.");
+        }
+        AppUser dealUser = null;
+        int userErrorsBefore = errors.size();
+        Long dealUserId = resolveActiveUserId(row.userName(), activeUserIdsByName, rowNumber, errors);
+        if (dealUserId != null) {
+            dealUser = appUserRepository.findById(dealUserId).orElse(null);
+            if (dealUser == null && errors.size() == userErrorsBefore) {
+                errors.add("Row " + rowNumber + ": Deal user not found.");
+            } else if (dealUser.getUserStatus() != UserStatus.ACTIVE) {
+                errors.add("Row " + rowNumber + ": Deal user is not active.");
+            }
+        }
+        Stage stage = null;
+        int stageErrorsBefore = errors.size();
+        Long stageId = resolveStageId(row.stageName(), stageIdsByName, rowNumber, errors);
+        if (stageId != null) {
+            stage = stageRepository.findById(stageId).orElse(null);
+        }
+        if (stage == null && errors.size() == stageErrorsBefore) {
+            errors.add("Row " + rowNumber + ": Stage not found.");
+        }
+
+        if (errors.size() > errorsBefore) {
+            return;
+        }
+
+        Deal deal = new Deal();
+        deal.setContact(contact);
+        deal.setDealUser(dealUser);
+        deal.setClosingDate(closingDate.atStartOfDay().atOffset(ZoneOffset.UTC).toLocalDateTime());
+        deal.setStage(stage);
+        deal.setAmount(amount);
+        deal.setDealDate(dealDate.atStartOfDay().atOffset(ZoneOffset.UTC).toLocalDateTime());
+        deal.setPipeline(row.pipeline().trim());
+        deal.setCurrency(row.currency().trim().toUpperCase());
+        deal.setDealComments(row.dealComments() == null || row.dealComments().trim().isEmpty() ? null : row.dealComments().trim());
+        deal.setCreatedBy(actor);
+        deal.setCreatedDate(now);
+        deal.setLastUpdatedBy(actor);
+        deal.setLastUpdatedDate(now);
+        deal.setOcaControl(0L);
+        toSave.add(deal);
+    }
+
+    private static Long resolveVisibleContactId(
+            String contactValue, Map<String, List<Long>> visibleContactIdsByName, int rowNumber, List<String> errors) {
+        if (contactValue == null || contactValue.trim().isEmpty()) {
+            return null;
+        }
+        String trimmed = contactValue.trim();
+        if (trimmed.matches("\\d+")) {
+            return Long.parseLong(trimmed);
+        }
+        List<Long> candidates = visibleContactIdsByName.getOrDefault(normalizeLookupKey(trimmed), List.of());
+        if (candidates.isEmpty()) {
+            errors.add("Row " + rowNumber + ": Contact name not found in allowed list.");
+            return null;
+        }
+        if (candidates.size() > 1) {
+            errors.add("Row " + rowNumber + ": Contact name is ambiguous. Use a unique contact name.");
+            return null;
+        }
+        return candidates.getFirst();
+    }
+
+    private static Long resolveActiveUserId(
+            String userValue, Map<String, List<Long>> activeUserIdsByName, int rowNumber, List<String> errors) {
+        if (userValue == null || userValue.trim().isEmpty()) {
+            return null;
+        }
+        String trimmed = userValue.trim();
+        if (trimmed.matches("\\d+")) {
+            return Long.parseLong(trimmed);
+        }
+        List<Long> candidates = activeUserIdsByName.getOrDefault(normalizeLookupKey(trimmed), List.of());
+        if (candidates.isEmpty()) {
+            errors.add("Row " + rowNumber + ": Deal user name not found in allowed list.");
+            return null;
+        }
+        if (candidates.size() > 1) {
+            errors.add("Row " + rowNumber + ": Deal user name is ambiguous. Use a unique user name.");
+            return null;
+        }
+        return candidates.getFirst();
+    }
+
+    private static Long resolveStageId(
+            String stageValue, Map<String, List<Long>> stageIdsByName, int rowNumber, List<String> errors) {
+        if (stageValue == null || stageValue.trim().isEmpty()) {
+            return null;
+        }
+        String trimmed = stageValue.trim();
+        if (trimmed.matches("\\d+")) {
+            return Long.parseLong(trimmed);
+        }
+        List<Long> candidates = stageIdsByName.getOrDefault(normalizeLookupKey(trimmed), List.of());
+        if (candidates.isEmpty()) {
+            errors.add("Row " + rowNumber + ": Stage name not found in allowed list.");
+            return null;
+        }
+        if (candidates.size() > 1) {
+            errors.add("Row " + rowNumber + ": Stage name is ambiguous. Use a unique stage name.");
+            return null;
+        }
+        return candidates.getFirst();
+    }
+
+    private static String normalizeLookupKey(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().toLowerCase(Locale.ROOT);
     }
 
     private static DealDetailResponse toDetail(Deal d, boolean canEdit) {

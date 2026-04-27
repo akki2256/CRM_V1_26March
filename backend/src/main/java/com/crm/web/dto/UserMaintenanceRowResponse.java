@@ -8,6 +8,8 @@ public record UserMaintenanceRowResponse(
         String firstName,
         String lastName,
         List<String> userGroups,
+        List<String> alignments,
+        Long selectedAlignmentId,
         String email,
         String phoneNumber) {
 }

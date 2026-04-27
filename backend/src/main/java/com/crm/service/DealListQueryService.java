@@ -131,6 +131,20 @@ public class DealListQueryService {
         return found.getFirst();
     }
 
+    @Transactional(readOnly = true)
+    public Specification<Deal> visibilitySpecification(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof JwtUserPrincipal principal)) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Authentication required.");
+        }
+        Long userId = principal.getUserId();
+        List<String> groups = userDirectoryService.groupNamesForUser(userId);
+        VisibilityModel visibilityModel = resolveVisibility(userId, groups);
+        return (root, query, cb) -> {
+            Join<Deal, Contact> contact = root.join("contact", JoinType.INNER);
+            return contactOwnershipVisibility(contact, cb, visibilityModel);
+        };
+    }
+
     private Sort resolveSort(String logicalField, Sort.Direction direction) {
         if ("dealUserName".equals(logicalField)) {
             return Sort.by(

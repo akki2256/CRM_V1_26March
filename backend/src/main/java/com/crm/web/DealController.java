@@ -4,6 +4,8 @@ import com.crm.service.DealListQueryService;
 import com.crm.service.DealService;
 import com.crm.web.dto.DealAccountPatchRequest;
 import com.crm.web.dto.DealAttachmentRowDto;
+import com.crm.web.dto.DealBulkUploadRequest;
+import com.crm.web.dto.DealBulkUploadResponse;
 import com.crm.web.dto.DealContactPatchRequest;
 import com.crm.web.dto.DealCreateRequest;
 import com.crm.web.dto.DealCreateResponse;
@@ -46,6 +48,11 @@ public class DealController {
     @PostMapping
     public DealCreateResponse create(@Valid @RequestBody DealCreateRequest request, Authentication authentication) {
         return dealService.create(request, authentication);
+    }
+
+    @PostMapping("/bulk-upload")
+    public DealBulkUploadResponse bulkUpload(@RequestBody DealBulkUploadRequest request, Authentication authentication) {
+        return dealService.bulkUpload(request, authentication);
     }
 
     @PostMapping("/search")

@@ -1,8 +1,11 @@
 package com.crm.web;
 
 import com.crm.service.UserMaintenanceService;
+import com.crm.web.dto.AlignmentCreateRequest;
+import com.crm.web.dto.AlignmentOptionResponse;
 import com.crm.web.dto.GroupOptionResponse;
 import com.crm.web.dto.UserCreateRequest;
+import com.crm.web.dto.UserAlignmentPatchRequest;
 import com.crm.web.dto.UserCreateResponse;
 import com.crm.web.dto.UserMaintenanceRowResponse;
 import jakarta.validation.Valid;
@@ -11,6 +14,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -68,5 +72,25 @@ public class UserMaintenanceController {
     @GetMapping("/groups")
     public List<GroupOptionResponse> groups(Authentication authentication) {
         return userMaintenanceService.listGroups(authentication);
+    }
+
+    @GetMapping("/alignments")
+    public List<AlignmentOptionResponse> alignments(Authentication authentication) {
+        return userMaintenanceService.listAlignments(authentication);
+    }
+
+    @PostMapping("/alignments")
+    public AlignmentOptionResponse createAlignment(
+            Authentication authentication,
+            @Valid @RequestBody AlignmentCreateRequest request) {
+        return userMaintenanceService.createAlignment(authentication, request);
+    }
+
+    @PatchMapping("/users/{userId}/alignment")
+    public void patchAlignment(
+            Authentication authentication,
+            @PathVariable Long userId,
+            @Valid @RequestBody UserAlignmentPatchRequest request) {
+        userMaintenanceService.patchUserAlignment(authentication, userId, request);
     }
 }

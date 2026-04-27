@@ -1,17 +1,25 @@
 package com.crm.service;
 
 import com.crm.domain.AppUser;
+import com.crm.domain.Alignment;
 import com.crm.domain.CrmGroup;
+import com.crm.domain.UserAlignment;
+import com.crm.domain.UserAlignmentId;
 import com.crm.domain.UserGroup;
 import com.crm.domain.UserGroupId;
 import com.crm.domain.UserStatus;
+import com.crm.repo.AlignmentRepository;
 import com.crm.repo.AppUserRepository;
 import com.crm.repo.CrmGroupRepository;
+import com.crm.repo.UserAlignmentRepository;
 import com.crm.repo.UserGroupRepository;
 import com.crm.security.JwtUserPrincipal;
+import com.crm.web.dto.AlignmentCreateRequest;
+import com.crm.web.dto.AlignmentOptionResponse;
 import com.crm.web.ApiException;
 import com.crm.web.dto.GroupOptionResponse;
 import com.crm.web.dto.UserCreateRequest;
+import com.crm.web.dto.UserAlignmentPatchRequest;
 import com.crm.web.dto.UserCreateResponse;
 import com.crm.web.dto.UserMaintenanceRowResponse;
 import java.time.LocalDateTime;
@@ -34,6 +42,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserMaintenanceService {
 
     private final UserGroupRepository userGroupRepository;
+    private final UserAlignmentRepository userAlignmentRepository;
+    private final AlignmentRepository alignmentRepository;
     private final CrmGroupRepository crmGroupRepository;
     private final AppUserRepository appUserRepository;
     private final UserDirectoryService userDirectoryService;
@@ -42,12 +52,16 @@ public class UserMaintenanceService {
 
     public UserMaintenanceService(
             UserGroupRepository userGroupRepository,
+            UserAlignmentRepository userAlignmentRepository,
+            AlignmentRepository alignmentRepository,
             CrmGroupRepository crmGroupRepository,
             AppUserRepository appUserRepository,
             UserDirectoryService userDirectoryService,
             PasswordPolicyService passwordPolicyService,
             PasswordEncoder passwordEncoder) {
         this.userGroupRepository = userGroupRepository;
+        this.userAlignmentRepository = userAlignmentRepository;
+        this.alignmentRepository = alignmentRepository;
         this.crmGroupRepository = crmGroupRepository;
         this.appUserRepository = appUserRepository;
         this.userDirectoryService = userDirectoryService;
@@ -69,7 +83,7 @@ public class UserMaintenanceService {
             String phone,
             String phoneOp,
             String userGroup) {
-        ensureAdmin(authentication);
+        ensureAdminOrManager(authentication);
 
         List<UserGroup> allLinks = userGroupRepository.findAllWithUserAndGroup();
         Map<Long, UserRowBuilder> byUserId = new HashMap<>();
@@ -77,6 +91,16 @@ public class UserMaintenanceService {
             AppUser user = link.getUser();
             UserRowBuilder builder = byUserId.computeIfAbsent(user.getUserId(), k -> new UserRowBuilder(user));
             builder.groups.add(link.getGroup().getGroupName());
+        }
+        List<UserAlignment> userAlignments = userAlignmentRepository.findAllWithUserAndAlignment();
+        for (UserAlignment link : userAlignments) {
+            UserRowBuilder builder = byUserId.get(link.getUser().getUserId());
+            if (builder != null) {
+                builder.alignments.add(link.getAlignment().getAlignmentName());
+                if (builder.selectedAlignmentId == null) {
+                    builder.selectedAlignmentId = link.getAlignment().getAlignmentId();
+                }
+            }
         }
 
         return byUserId.values().stream()
@@ -93,31 +117,47 @@ public class UserMaintenanceService {
 
     @Transactional(readOnly = true)
     public List<GroupOptionResponse> listGroups(Authentication authentication) {
-        ensureAdmin(authentication);
+        ensureAdminOrManager(authentication);
         return crmGroupRepository.findAllByOrderByGroupNameAsc().stream()
                 .map(g -> new GroupOptionResponse(g.getGroupId(), g.getGroupName()))
                 .toList();
     }
 
     @Transactional(readOnly = true)
+    public List<AlignmentOptionResponse> listAlignments(Authentication authentication) {
+        ensureAdminOrManager(authentication);
+        return alignmentRepository.findAllByOrderByAlignmentNameAsc().stream()
+                .map(a -> new AlignmentOptionResponse(a.getAlignmentId(), a.getAlignmentName()))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public UserMaintenanceRowResponse userById(Authentication authentication, Long userId) {
-        ensureAdmin(authentication);
+        ensureAdminOrManager(authentication);
         AppUser user = appUserRepository.findById(userId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User not found."));
         List<String> groups = userDirectoryService.groupNamesForUser(userId);
+        List<UserAlignment> alignments = userAlignmentRepository.findAllWithAlignmentByUserId(userId);
+        List<String> alignmentNames = alignments.stream()
+                .map(a -> a.getAlignment().getAlignmentName())
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
+        Long selectedAlignmentId = alignments.isEmpty() ? null : alignments.get(0).getAlignment().getAlignmentId();
         return new UserMaintenanceRowResponse(
                 user.getUserId(),
                 user.getUsername(),
                 user.getFirstName(),
                 user.getLastName(),
                 groups,
+                alignmentNames,
+                selectedAlignmentId,
                 user.getEmail(),
                 user.getPhoneNumber());
     }
 
     @Transactional
     public UserCreateResponse createUser(Authentication authentication, UserCreateRequest request) {
-        String actor = ensureAdmin(authentication);
+        String actor = ensureAdminOrManager(authentication);
         passwordPolicyService.validate(request.password());
 
         if (appUserRepository.findByUsernameIgnoreCase(request.username().trim()).isPresent()) {
@@ -160,6 +200,46 @@ public class UserMaintenanceService {
         }
 
         return new UserCreateResponse(user.getUserId(), "User created successfully.");
+    }
+
+    @Transactional
+    public AlignmentOptionResponse createAlignment(Authentication authentication, AlignmentCreateRequest request) {
+        String actor = ensureAdminOrManager(authentication);
+        String name = request.alignmentName().trim();
+        if (alignmentRepository.findByAlignmentNameIgnoreCase(name).isPresent()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Alignment already exists.");
+        }
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        Alignment alignment = new Alignment();
+        alignment.setAlignmentName(name);
+        alignment.setCreatedBy(actor);
+        alignment.setCreatedDate(now);
+        alignment.setLastUpdatedBy(actor);
+        alignment.setLastUpdatedDate(now);
+        alignment.setOcaControl(0L);
+        alignmentRepository.save(alignment);
+        return new AlignmentOptionResponse(alignment.getAlignmentId(), alignment.getAlignmentName());
+    }
+
+    @Transactional
+    public void patchUserAlignment(Authentication authentication, Long userId, UserAlignmentPatchRequest request) {
+        String actor = ensureAdminOrManager(authentication);
+        AppUser user = appUserRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User not found."));
+        Alignment alignment = alignmentRepository.findById(request.alignmentId())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Alignment not found."));
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        userAlignmentRepository.deleteByUserUserId(userId);
+        UserAlignment link = new UserAlignment();
+        link.setId(new UserAlignmentId(userId, alignment.getAlignmentId()));
+        link.setUser(user);
+        link.setAlignment(alignment);
+        link.setCreatedBy(actor);
+        link.setCreatedDate(now);
+        link.setLastUpdatedBy(actor);
+        link.setLastUpdatedDate(now);
+        link.setOcaControl(0L);
+        userAlignmentRepository.save(link);
     }
 
     private void saveMembership(AppUser user, CrmGroup group, String actor, LocalDateTime now) {
@@ -212,14 +292,15 @@ public class UserMaintenanceService {
         };
     }
 
-    private String ensureAdmin(Authentication authentication) {
+    private String ensureAdminOrManager(Authentication authentication) {
         if (authentication == null || !(authentication.getPrincipal() instanceof JwtUserPrincipal principal)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Admin access required.");
+            throw new ApiException(HttpStatus.FORBIDDEN, "Admin/Manager access required.");
         }
         List<String> groups = userDirectoryService.groupNamesForUser(principal.getUserId());
-        boolean admin = groups.stream().anyMatch(g -> "ADMIN".equalsIgnoreCase(g));
-        if (!admin) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Admin access required.");
+        boolean privileged = groups.stream()
+                .anyMatch(g -> "ADMIN".equalsIgnoreCase(g) || "MANAGER".equalsIgnoreCase(g));
+        if (!privileged) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Admin/Manager access required.");
         }
         return principal.getUsername();
     }
@@ -227,6 +308,8 @@ public class UserMaintenanceService {
     private static class UserRowBuilder {
         private final AppUser user;
         private final Set<String> groups = new HashSet<>();
+        private final Set<String> alignments = new HashSet<>();
+        private Long selectedAlignmentId;
 
         private UserRowBuilder(AppUser user) {
             this.user = user;
@@ -241,8 +324,16 @@ public class UserMaintenanceService {
                     user.getFirstName(),
                     user.getLastName(),
                     sortedGroups,
+                    sortedAlignments(),
+                    selectedAlignmentId,
                     user.getEmail(),
                     user.getPhoneNumber());
+        }
+
+        private List<String> sortedAlignments() {
+            List<String> sorted = new ArrayList<>(alignments);
+            sorted.sort(String.CASE_INSENSITIVE_ORDER);
+            return sorted;
         }
     }
 }
