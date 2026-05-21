@@ -124,8 +124,26 @@ Inside `database/`:
 - `05_oracle_drop_legacy_username_column.sql` - Optional cleanup helper
 - `09_oracle_drop_password_salt_column.sql` - Optional helper to drop old `password_salt` column
 - `10_oracle_create_table_sequences.sql` - Optional helper to create/use explicit Oracle sequences for table IDs
+- `19_oracle_add_welcome_password_attempts.sql` - Adds `welcome_password_attempts` on existing Oracle `USERS` tables (also applied automatically on backend startup)
 
-## 7) Common Troubleshooting
+## 7) New user welcome email (Resend)
+
+When an admin creates a user, the backend generates a username and temporary password and emails them via [Resend](https://resend.com) to the new user's email address. The user must change their password on first login.
+
+**Forgot password** uses the same Resend path and optional `welcome-email-to` override: a policy-compliant temporary password valid for **10 minutes**, then forced password change on sign-in (same 3-attempt welcome-password rules while `must_change_password` is set). Successful sign-in resets `login_attempts`.
+
+**Local (recommended):** copy `backend/src/main/resources/application-local.yml.example` to `application-local.yml` (gitignored) and add your API key. The backend auto-imports that file on startup.
+
+**Or** set environment variables:
+
+```powershell
+$env:RESEND_API_KEY = "re_xxxxxxxx"
+$env:RESEND_FROM = "onboarding@resend.dev"
+```
+
+Default sender is Resend's `onboarding@resend.dev`. If no API key is configured, the user is still created but credentials are only written to the backend log.
+
+## 8) Common Troubleshooting
 
 - **401 on login**:
   - Ensure API call reaches `/api/auth/login` in browser Network tab.
@@ -134,10 +152,12 @@ Inside `database/`:
   - Fix service name in `DATASOURCE_URL`.
 - **Oracle ORA-01400 USER_NAME**:
   - Ensure column `user_name` is populated (not `username`).
+- **Oracle ORA-00904 WELCOME_PASSWORD_ATTEMPTS**:
+  - Restart the backend (startup patch adds the column), or run `database/19_oracle_add_welcome_password_attempts.sql` in SQL*Plus/SQL Developer.
 - **Frontend cannot call API**:
   - Confirm backend is running on port 8080 and frontend on 5173.
 
-## 8) Error Sharing Workflow
+## 9) Error Sharing Workflow
 
 If anything fails, paste full stacktrace/error text into the root file:
 

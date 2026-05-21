@@ -1,6 +1,7 @@
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\service\ContactByLabelWidgetService.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\DealSearchRequest.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\ContactController.java
+C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\service\UsernameGeneratorService.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\service\ContactListQueryService.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\domain\UserGroup.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\domain\DealAttachment.java
@@ -11,10 +12,12 @@ C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\domain\Contact.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\ContactBulkUploadRequest.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\TokenResponse.java
+C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\AccountRecoveryRequest.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\ContactByLabelResponse.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\security\PasswordChangeEnforcementFilter.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\repo\AppUserRepository.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\EmailRequest.java
+C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\bootstrap\UsersSchemaPatch.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\config\SecurityConfig.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\DealStageOptionResponse.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\ExportEmailRequest.java
@@ -32,6 +35,7 @@ C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\ExportController.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\domain\UserGroupId.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\DealAttachmentRowDto.java
+C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\SuggestUsernameResponse.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\service\DealListQueryService.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\service\ContactService.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\DealOutcomeTrendResponse.java
@@ -56,6 +60,7 @@ C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\DealOutcomeTrendPointDto.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\UserOptionResponse.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\domain\UserStatus.java
+C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\service\ResendEmailClient.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\ApiException.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\DashboardController.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\ContactByLabelSliceDto.java
@@ -82,6 +87,7 @@ C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\config\ConfigurationBeans.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\repo\StageRepository.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\UserCreateResponse.java
+C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\UserDeactivateResponse.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\GroupOptionResponse.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\DealCreateResponse.java
 C:\Users\dpgol\OneDrive\Desktop\Cursor 2\CRM Try 1\backend\src\main\java\com\crm\web\dto\DealContactOptionResponse.java

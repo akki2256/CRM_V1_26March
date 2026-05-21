@@ -2,9 +2,11 @@ com\crm\web\ContactController.class
 com\crm\web\dto\DealStagePatchRequest.class
 com\crm\repo\UserGroupRepository.class
 com\crm\web\AuthController.class
+com\crm\bootstrap\UsersSchemaPatch.class
 com\crm\CrmApplication.class
 com\crm\domain\CodeReference.class
 com\crm\service\UserDirectoryService.class
+com\crm\web\dto\UserDeactivateResponse.class
 com\crm\web\dto\DealUserOptionResponse.class
 com\crm\web\dto\ContactCreateRequest.class
 com\crm\config\AppProperties$Jwt.class
@@ -21,6 +23,7 @@ com\crm\domain\Deal.class
 com\crm\service\DealService.class
 com\crm\web\dto\PagedContactsResponse.class
 com\crm\repo\AppUserRepository.class
+com\crm\service\ResendEmailClient.class
 com\crm\web\dto\MeResponse.class
 com\crm\web\dto\AlignmentCreateRequest.class
 com\crm\web\dto\DealAccountPatchRequest.class
@@ -32,10 +35,14 @@ com\crm\web\dto\DealDetailResponse.class
 com\crm\domain\UserStatus.class
 com\crm\repo\ContactRepository.class
 com\crm\web\dto\ExportEmailRequest.class
+com\crm\service\UsernameGeneratorService.class
 com\crm\web\dto\ContactBulkUploadRowRequest.class
 com\crm\web\dto\UserCreateRequest.class
 com\crm\web\dto\GroupOptionResponse.class
+com\crm\web\dto\SuggestUsernameResponse.class
+com\crm\config\AppProperties$Resend.class
 com\crm\service\UserMaintenanceService$UserRowBuilder.class
+com\crm\web\dto\AccountRecoveryRequest.class
 com\crm\config\AppProperties$Mail.class
 com\crm\web\ExportController.class
 com\crm\security\PasswordChangeEnforcementFilter.class
@@ -55,6 +62,7 @@ com\crm\web\dto\UserOptionResponse.class
 com\crm\config\AppProperties$Security.class
 com\crm\domain\UserAlignment.class
 com\crm\repo\DealAttachmentRepository.class
+com\crm\service\ResendEmailClient$ResendSendRequest.class
 com\crm\repo\UserAlignmentRepository.class
 com\crm\domain\UserGroup.class
 com\crm\web\dto\DealOutcomeTrendResponse.class

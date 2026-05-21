@@ -1,0 +1,7 @@
+# Copy to application-local.yml (gitignored) for local Resend credentials.
+app:
+  resend:
+    api-key: re_your_api_key_here
+    from: onboarding@resend.dev
+    # Optional: send new-user and forgot-password emails here (for testing)
+    welcome-email-to: you@example.com

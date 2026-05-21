@@ -1,25 +1,37 @@
-:root {
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+/* Default theme: Object Bento (all pages) */
+:root,
+:root[data-theme='object-bento'] {
+  font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color-scheme: dark;
-  --bg-grad-1: #070b1f;
-  --bg-grad-2: #0a1738;
-  --bg-grad-3: #14306a;
-  --text: #e5eeff;
-  --muted: #9db0d8;
-  --surface: rgba(15, 30, 72, 0.52);
-  --surface-2: rgba(20, 39, 92, 0.58);
-  --border: rgba(150, 178, 241, 0.28);
-  --input-bg: rgba(8, 19, 49, 0.72);
-  --accent: #5da7ff;
-  --accent-strong: #3b82f6;
-  --accent-neon: #4de4ff;
-  --danger: #f87171;
-  --success: #34d399;
-  --shadow: 0 24px 44px rgba(2, 9, 30, 0.48);
-  --glass-blur: blur(14px);
-  --glow: 0 0 0 1px rgba(120, 177, 255, 0.2), 0 12px 36px rgba(34, 109, 255, 0.22);
+  color-scheme: light;
+  --bento-canvas: #faf6f0;
+  --bento-card: #ffffff;
+  --bento-border: #dcd0c0;
+  --bento-text: #2b2d31;
+  --bento-muted: #6b7280;
+  --bento-mint: #52b788;
+  --bento-orange: #ff6b35;
+  --bento-pink: #f15bb5;
+  --bento-lavender: #9b5de5;
+  --bento-shadow: 0 8px 24px rgba(43, 45, 49, 0.06), 0 2px 6px rgba(43, 45, 49, 0.04);
+  --bg-grad-1: #faf6f0;
+  --bg-grad-2: #faf6f0;
+  --bg-grad-3: #f3ebe0;
+  --text: var(--bento-text);
+  --muted: var(--bento-muted);
+  --surface: #ffffff;
+  --surface-2: #fdfbf7;
+  --border: var(--bento-border);
+  --input-bg: #ffffff;
+  --accent: var(--bento-lavender);
+  --accent-strong: var(--bento-orange);
+  --accent-neon: var(--bento-pink);
+  --danger: #e11d48;
+  --success: var(--bento-mint);
+  --shadow: var(--bento-shadow);
+  --glass-blur: none;
+  --glow: none;
 }
 
 :root[data-theme='navy'] {
@@ -143,10 +155,24 @@
 body {
   margin: 0;
   min-height: 100vh;
+  background: var(--bg-grad-1);
+  color: var(--text);
+}
+
+:root[data-theme='navy'] body,
+:root[data-theme='slate-blue'] body,
+:root[data-theme='midnight-purple'] body,
+:root[data-theme='forest-night'] body {
   background:
     radial-gradient(900px 700px at 0% 0%, var(--bg-grad-3) 0%, transparent 65%),
     linear-gradient(155deg, var(--bg-grad-1) 0%, var(--bg-grad-2) 55%, var(--bg-grad-1) 100%);
-  color: var(--text);
+}
+
+:root[data-theme='frost-light'] body,
+:root[data-theme='sand-light'] body {
+  background:
+    radial-gradient(900px 700px at 0% 0%, var(--bg-grad-3) 0%, transparent 65%),
+    linear-gradient(155deg, var(--bg-grad-1) 0%, var(--bg-grad-2) 55%, var(--bg-grad-1) 100%);
 }
 
 #root {

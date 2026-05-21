@@ -21,6 +21,7 @@ import com.crm.web.dto.GroupOptionResponse;
 import com.crm.web.dto.UserCreateRequest;
 import com.crm.web.dto.UserAlignmentPatchRequest;
 import com.crm.web.dto.UserCreateResponse;
+import com.crm.web.dto.UserDeactivateResponse;
 import com.crm.web.dto.UserMaintenanceRowResponse;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -31,7 +32,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -49,6 +52,8 @@ public class UserMaintenanceService {
     private final UserDirectoryService userDirectoryService;
     private final PasswordPolicyService passwordPolicyService;
     private final PasswordEncoder passwordEncoder;
+    private final UsernameGeneratorService usernameGeneratorService;
+    private final MailNotificationService mailNotificationService;
 
     public UserMaintenanceService(
             UserGroupRepository userGroupRepository,
@@ -58,7 +63,9 @@ public class UserMaintenanceService {
             AppUserRepository appUserRepository,
             UserDirectoryService userDirectoryService,
             PasswordPolicyService passwordPolicyService,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            UsernameGeneratorService usernameGeneratorService,
+            MailNotificationService mailNotificationService) {
         this.userGroupRepository = userGroupRepository;
         this.userAlignmentRepository = userAlignmentRepository;
         this.alignmentRepository = alignmentRepository;
@@ -67,6 +74,14 @@ public class UserMaintenanceService {
         this.userDirectoryService = userDirectoryService;
         this.passwordPolicyService = passwordPolicyService;
         this.passwordEncoder = passwordEncoder;
+        this.usernameGeneratorService = usernameGeneratorService;
+        this.mailNotificationService = mailNotificationService;
+    }
+
+    @Transactional(readOnly = true)
+    public String suggestUsername(Authentication authentication, String firstName) {
+        ensureAdminOrManager(authentication);
+        return usernameGeneratorService.generateUniqueUsername(firstName.trim());
     }
 
     @Transactional(readOnly = true)
@@ -89,6 +104,9 @@ public class UserMaintenanceService {
         Map<Long, UserRowBuilder> byUserId = new HashMap<>();
         for (UserGroup link : allLinks) {
             AppUser user = link.getUser();
+            if (user.getUserStatus() != UserStatus.ACTIVE) {
+                continue;
+            }
             UserRowBuilder builder = byUserId.computeIfAbsent(user.getUserId(), k -> new UserRowBuilder(user));
             builder.groups.add(link.getGroup().getGroupName());
         }
@@ -158,12 +176,17 @@ public class UserMaintenanceService {
     @Transactional
     public UserCreateResponse createUser(Authentication authentication, UserCreateRequest request) {
         String actor = ensureAdminOrManager(authentication);
-        passwordPolicyService.validate(request.password());
+        String username = resolveUsernameForCreate(request.firstName().trim(), request.username());
+        String plainPassword = passwordPolicyService.generateCompliantPassword();
 
-        if (appUserRepository.findByUsernameIgnoreCase(request.username().trim()).isPresent()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Username already exists.");
-        }
-        if (appUserRepository.findByEmailIgnoreCase(request.email().trim()).isPresent()) {
+        Optional<AppUser> existingByEmail =
+                appUserRepository.findByEmailIgnoreCase(request.email().trim().toLowerCase(Locale.ROOT));
+        if (existingByEmail.isPresent()) {
+            if (existingByEmail.get().getUserStatus() == UserStatus.INACTIVE) {
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST,
+                        "This email belongs to a removed user. Create a new account with a different email or contact an administrator.");
+            }
             throw new ApiException(HttpStatus.BAD_REQUEST, "Email already exists.");
         }
 
@@ -178,15 +201,18 @@ public class UserMaintenanceService {
 
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         AppUser user = new AppUser();
-        user.setUsername(request.username().trim());
+        user.setUsername(username);
         user.setFirstName(request.firstName().trim());
         user.setLastName(request.lastName().trim());
-        user.setPasswordHash(passwordEncoder.encode(request.password()));
+        user.setPasswordHash(passwordEncoder.encode(plainPassword));
         user.setEmail(request.email().trim().toLowerCase(Locale.ROOT));
         user.setPhoneNumber(request.phoneNumber().trim());
         user.setLoginAttempts(0);
+        user.setWelcomePasswordAttempts(0);
         user.setUserStatus(UserStatus.ACTIVE);
-        user.setMustChangePassword(false);
+        user.setMustChangePassword(true);
+        user.setTemporaryPasswordHash(null);
+        user.setTemporaryPasswordExpiresAt(null);
         user.setCreatedBy(actor);
         user.setCreatedDate(now);
         user.setLastUpdatedBy(actor);
@@ -199,7 +225,50 @@ public class UserMaintenanceService {
             saveMembership(user, additionalGroup, actor, now);
         }
 
-        return new UserCreateResponse(user.getUserId(), "User created successfully.");
+        String message = "User created successfully.";
+        try {
+            mailNotificationService.sendNewUserCredentials(
+                    user.getEmail(), user.getFirstName(), username, plainPassword);
+        } catch (Exception ex) {
+            message = message + " Welcome email could not be sent; share credentials manually.";
+        }
+
+        return new UserCreateResponse(user.getUserId(), username, message);
+    }
+
+    @Transactional
+    public UserDeactivateResponse deactivateUser(Authentication authentication, Long userId) {
+        String actor = ensureAdminOrManager(authentication);
+        JwtUserPrincipal principal = (JwtUserPrincipal) authentication.getPrincipal();
+        if (principal.getUserId().equals(userId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "You cannot remove your own user account.");
+        }
+
+        AppUser user = appUserRepository
+                .findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User not found."));
+        if (user.getUserStatus() == UserStatus.INACTIVE) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "User is already inactive.");
+        }
+        if (user.getUserStatus() != UserStatus.ACTIVE) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Only active users can be removed.");
+        }
+
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        user.setUserStatus(UserStatus.INACTIVE);
+        user.setLoginAttempts(0);
+        user.setWelcomePasswordAttempts(0);
+        user.setMustChangePassword(false);
+        user.setTemporaryPasswordHash(null);
+        user.setTemporaryPasswordExpiresAt(null);
+        user.setLastUpdatedBy(actor);
+        user.setLastUpdatedDate(now);
+        user.setOcaControl(user.getOcaControl() + 1);
+        appUserRepository.save(user);
+
+        return new UserDeactivateResponse(
+                user.getUserId(),
+                "User removed successfully. They must be added again to regain access.");
     }
 
     @Transactional
@@ -290,6 +359,27 @@ public class UserMaintenanceService {
             case "not_equals", "not_equal", "neq", "not_eq" -> "neq";
             default -> "eq";
         };
+    }
+
+    private String resolveUsernameForCreate(String firstName, String requestedUsername) {
+        if (requestedUsername == null || requestedUsername.isBlank()) {
+            return usernameGeneratorService.generateUniqueUsername(firstName);
+        }
+        String candidate = requestedUsername.trim().toLowerCase(Locale.ROOT);
+        String prefix = usernameGeneratorService.prefixFromFirstName(firstName);
+        if (prefix.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "First name must contain at least one letter.");
+        }
+        Pattern pattern = Pattern.compile("^" + Pattern.quote(prefix) + "\\d{4}$");
+        if (!pattern.matcher(candidate).matches()) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Username no longer matches first name. Tab away from First Name to refresh it.");
+        }
+        if (appUserRepository.findByUsernameIgnoreCase(candidate).isPresent()) {
+            return usernameGeneratorService.generateUniqueUsername(firstName);
+        }
+        return candidate;
     }
 
     private String ensureAdminOrManager(Authentication authentication) {

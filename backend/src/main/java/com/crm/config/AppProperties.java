@@ -8,6 +8,7 @@ public class AppProperties {
     private Jwt jwt = new Jwt();
     private Security security = new Security();
     private Mail mail = new Mail();
+    private Resend resend = new Resend();
     private Cors cors = new Cors();
 
     public Jwt getJwt() {
@@ -32,6 +33,14 @@ public class AppProperties {
 
     public void setMail(Mail mail) {
         this.mail = mail;
+    }
+
+    public Resend getResend() {
+        return resend;
+    }
+
+    public void setResend(Resend resend) {
+        this.resend = resend;
     }
 
     public Cors getCors() {
@@ -65,6 +74,7 @@ public class AppProperties {
 
     public static class Security {
         private int maxLoginAttempts = 5;
+        private int welcomePasswordMaxAttempts = 3;
 
         public int getMaxLoginAttempts() {
             return maxLoginAttempts;
@@ -72,6 +82,14 @@ public class AppProperties {
 
         public void setMaxLoginAttempts(int maxLoginAttempts) {
             this.maxLoginAttempts = maxLoginAttempts;
+        }
+
+        public int getWelcomePasswordMaxAttempts() {
+            return welcomePasswordMaxAttempts;
+        }
+
+        public void setWelcomePasswordMaxAttempts(int welcomePasswordMaxAttempts) {
+            this.welcomePasswordMaxAttempts = welcomePasswordMaxAttempts;
         }
     }
 
@@ -84,6 +102,37 @@ public class AppProperties {
 
         public void setFrom(String from) {
             this.from = from;
+        }
+    }
+
+    public static class Resend {
+        private String apiKey = "";
+        private String from = "";
+        /** When set, new-user credential emails go here instead of the user's email (local/testing). */
+        private String welcomeEmailTo = "";
+
+        public String getApiKey() {
+            return apiKey;
+        }
+
+        public void setApiKey(String apiKey) {
+            this.apiKey = apiKey;
+        }
+
+        public String getFrom() {
+            return from;
+        }
+
+        public void setFrom(String from) {
+            this.from = from;
+        }
+
+        public String getWelcomeEmailTo() {
+            return welcomeEmailTo;
+        }
+
+        public void setWelcomeEmailTo(String welcomeEmailTo) {
+            this.welcomeEmailTo = welcomeEmailTo;
         }
     }
 

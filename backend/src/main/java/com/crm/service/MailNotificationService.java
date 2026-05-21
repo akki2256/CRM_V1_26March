@@ -17,27 +17,91 @@ public class MailNotificationService {
 
     private final JavaMailSender mailSender;
     private final AppProperties appProperties;
+    private final ResendEmailClient resendEmailClient;
 
-    public MailNotificationService(JavaMailSender mailSender, AppProperties appProperties) {
+    public MailNotificationService(
+            JavaMailSender mailSender, AppProperties appProperties, ResendEmailClient resendEmailClient) {
         this.mailSender = mailSender;
         this.appProperties = appProperties;
+        this.resendEmailClient = resendEmailClient;
     }
 
-    public void sendTemporaryPassword(String toEmail, String username, String plainTemporaryPassword) {
+    public void sendTemporaryPassword(
+            String userEmailOnFile, String firstName, String username, String plainTemporaryPassword) {
+        String recipient = resolveCredentialEmailRecipient(userEmailOnFile);
+        String displayFirstName =
+                (firstName == null || firstName.isBlank()) ? "there" : firstName.trim();
+        String subject = "Calicap CRM – temporary password";
+        String text =
+                "Hi "
+                        + displayFirstName
+                        + ",\n\n"
+                        + "You requested a password reset for your CRM account.\n"
+                        + "Use the temporary password below to sign in. It is valid for 10 minutes.\n"
+                        + "After you sign in, you must choose a new password.\n\n"
+                        + "Username: "
+                        + username
+                        + "\n"
+                        + "Temporary password: "
+                        + plainTemporaryPassword
+                        + "\n\n"
+                        + "Thanks,\n"
+                        + "Calicap Admin\n";
+
+        if (resendEmailClient.isConfigured()) {
+            resendEmailClient.sendTextEmail(recipient, subject, text);
+            return;
+        }
+
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(appProperties.getMail().getFrom());
-        message.setTo(toEmail);
-        message.setSubject("Your temporary CRM password");
-        message.setText(
-                "Hello,\n\n"
-                        + "You requested a password reset for user ID (login name): "
-                        + username
-                        + "\n\nYour temporary password is: "
-                        + plainTemporaryPassword
-                        + "\n\nThis temporary password is valid for 10 minutes. After you sign in, you will be "
-                        + "asked to choose a new password that meets the password policy.\n\n"
-                        + "If you did not request this, please contact your administrator.\n");
+        message.setTo(recipient);
+        message.setSubject(subject);
+        message.setText(text);
         sendOrLog(message);
+    }
+
+    public void sendNewUserCredentials(
+            String userEmailOnFile, String firstName, String username, String plainTemporaryPassword) {
+        String recipient = resolveCredentialEmailRecipient(userEmailOnFile);
+        String displayFirstName =
+                (firstName == null || firstName.isBlank()) ? "there" : firstName.trim();
+        String subject = "Welcome to Calicap – your CRM credentials";
+        String text =
+                "Hi "
+                        + displayFirstName
+                        + ",\n\n"
+                        + "Welcome to Calicap. Below mentioned are your CRM username and password.\n"
+                        + "Kindly do your first login and change your password.\n"
+                        + "Username: "
+                        + username
+                        + "\n"
+                        + "Password: "
+                        + plainTemporaryPassword
+                        + "\n\n"
+                        + "Thanks,\n"
+                        + "Calicap Admin\n";
+
+        if (resendEmailClient.isConfigured()) {
+            resendEmailClient.sendTextEmail(recipient, subject, text);
+            return;
+        }
+
+        log.warn(
+                "Resend is not configured (RESEND_API_KEY). New-user credentials email was not sent. "
+                        + "to={} username={}",
+                recipient,
+                username);
+        log.info("New-user credentials email body fallback:\n{}", text);
+    }
+
+    /** When {@code welcome-email-to} is set (local/testing), credential emails go there instead of the user inbox. */
+    private String resolveCredentialEmailRecipient(String userEmailOnFile) {
+        String override = appProperties.getResend().getWelcomeEmailTo();
+        if (override != null && !override.isBlank()) {
+            return override.trim();
+        }
+        return userEmailOnFile == null ? "" : userEmailOnFile.trim();
     }
 
     public void sendForgotUserId(String toEmail, String username) {

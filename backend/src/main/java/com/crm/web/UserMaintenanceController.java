@@ -6,13 +6,16 @@ import com.crm.web.dto.AlignmentOptionResponse;
 import com.crm.web.dto.GroupOptionResponse;
 import com.crm.web.dto.UserCreateRequest;
 import com.crm.web.dto.UserAlignmentPatchRequest;
+import com.crm.web.dto.SuggestUsernameResponse;
 import com.crm.web.dto.UserCreateResponse;
+import com.crm.web.dto.UserDeactivateResponse;
 import com.crm.web.dto.UserMaintenanceRowResponse;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -64,9 +67,21 @@ public class UserMaintenanceController {
         return userMaintenanceService.userById(authentication, userId);
     }
 
+    @GetMapping("/suggest-username")
+    public SuggestUsernameResponse suggestUsername(
+            Authentication authentication, @RequestParam String firstName) {
+        String username = userMaintenanceService.suggestUsername(authentication, firstName);
+        return new SuggestUsernameResponse(username);
+    }
+
     @PostMapping("/users")
     public UserCreateResponse createUser(Authentication authentication, @Valid @RequestBody UserCreateRequest request) {
         return userMaintenanceService.createUser(authentication, request);
+    }
+
+    @DeleteMapping("/users/{userId}")
+    public UserDeactivateResponse deactivateUser(Authentication authentication, @PathVariable Long userId) {
+        return userMaintenanceService.deactivateUser(authentication, userId);
     }
 
     @GetMapping("/groups")

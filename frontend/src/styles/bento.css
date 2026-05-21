@@ -1,0 +1,732 @@
+/* Object Bento — layout & components (tokens live in index.css :root default) */
+
+html[data-theme='object-bento'] body,
+:root[data-theme='object-bento'] body {
+  background: var(--bento-canvas);
+  font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+}
+
+:root[data-theme='object-bento'] .crm-shell {
+  grid-template-columns: 240px 1fr;
+  background: var(--bento-canvas);
+}
+
+:root[data-theme='object-bento'] .left-nav {
+  background: var(--bento-card);
+  border-right: 1px solid var(--bento-border);
+  box-shadow: var(--bento-shadow);
+  backdrop-filter: none;
+}
+
+:root[data-theme='object-bento'] .left-nav-title {
+  font-family: 'Space Grotesk', 'DM Sans', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+:root[data-theme='object-bento'] .menu-main.active,
+:root[data-theme='object-bento'] .menu-main:hover {
+  background: color-mix(in srgb, var(--bento-lavender) 12%, white);
+  color: var(--bento-lavender);
+  box-shadow: none;
+}
+
+:root[data-theme='object-bento'] .menu-sub:hover {
+  color: var(--bento-lavender);
+}
+
+:root[data-theme='object-bento'] .main-panel {
+  background: var(--bento-canvas);
+}
+
+:root[data-theme='object-bento'] .top-bar h1 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+:root[data-theme='object-bento'] .create-new-btn,
+:root[data-theme='object-bento'] button.primary {
+  background: var(--bento-orange);
+  border: 1px solid color-mix(in srgb, var(--bento-orange) 80%, #000 20%);
+  color: #fff;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--bento-orange) 35%, transparent);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+:root[data-theme='object-bento'] .create-new-btn:hover,
+:root[data-theme='object-bento'] button.primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--bento-orange) 40%, transparent);
+}
+
+:root[data-theme='object-bento'] button.secondary {
+  background: var(--bento-card);
+  border: 1px solid var(--bento-border);
+  color: var(--bento-text);
+  box-shadow: var(--bento-shadow);
+}
+
+:root[data-theme='object-bento'] .card,
+:root[data-theme='object-bento'] .widget-card,
+:root[data-theme='object-bento'] .modal,
+:root[data-theme='object-bento'] .result-table-wrap,
+:root[data-theme='object-bento'] .contacts-page .table-wrap {
+  background: var(--bento-card);
+  border: 1px solid var(--bento-border);
+  box-shadow: var(--bento-shadow);
+  backdrop-filter: none;
+}
+
+:root[data-theme='object-bento'] .login-card {
+  max-width: 440px;
+  border-radius: 20px;
+  box-shadow: var(--bento-shadow);
+}
+
+:root[data-theme='object-bento'] .login-card h1 {
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: -0.03em;
+}
+
+html[data-theme='object-bento'] .profile-icon,
+:root[data-theme='object-bento'] .profile-icon {
+  background: color-mix(in srgb, var(--bento-lavender) 18%, white);
+  color: var(--bento-lavender);
+  border: 1px solid var(--bento-border);
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+/* ——— All pages: sales, admin, contacts, deals, modals ——— */
+html[data-theme='object-bento'] .contacts-page,
+html[data-theme='object-bento'] .deals-page,
+html[data-theme='object-bento'] .user-maintenance,
+html[data-theme='object-bento'] .submenu-panel,
+html[data-theme='object-bento'] .deal-detail-root {
+  color: var(--bento-text);
+}
+
+html[data-theme='object-bento'] .contacts-page-header h2,
+html[data-theme='object-bento'] .deals-page h2,
+html[data-theme='object-bento'] .submenu-panel h2,
+html[data-theme='object-bento'] .submenu-panel h3 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--bento-text);
+}
+
+html[data-theme='object-bento'] .table-wrap,
+html[data-theme='object-bento'] .contacts-table-wrap,
+html[data-theme='object-bento'] .submenu-panel .widget-card {
+  background: var(--bento-card);
+  border: 1px solid var(--bento-border);
+  border-radius: 16px;
+  box-shadow: var(--bento-shadow);
+}
+
+html[data-theme='object-bento'] .result-table th {
+  background: var(--surface-2);
+  color: var(--bento-text);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.82rem;
+}
+
+html[data-theme='object-bento'] .result-table td {
+  color: var(--bento-text);
+}
+
+html[data-theme='object-bento'] .result-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--bento-lavender) 5%, white);
+}
+
+html[data-theme='object-bento'] .field input,
+html[data-theme='object-bento'] .field select,
+html[data-theme='object-bento'] .contacts-header-quick-input,
+html[data-theme='object-bento'] .contacts-sort-inline select,
+html[data-theme='object-bento'] .contacts-page-size select,
+html[data-theme='object-bento'] .theme-select,
+html[data-theme='object-bento'] .deal-sideband-input {
+  background: var(--bento-card);
+  border: 1px solid var(--bento-border);
+  color: var(--bento-text);
+  box-shadow: none;
+}
+
+html[data-theme='object-bento'] .field input:focus,
+html[data-theme='object-bento'] .field select:focus {
+  outline: none;
+  border-color: var(--bento-lavender);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bento-lavender) 15%, transparent);
+}
+
+html[data-theme='object-bento'] .modal-backdrop {
+  background: color-mix(in srgb, var(--bento-text) 25%, transparent);
+}
+
+html[data-theme='object-bento'] .modal,
+html[data-theme='object-bento'] .contact-modal {
+  border-radius: 18px;
+  box-shadow: var(--bento-shadow);
+}
+
+html[data-theme='object-bento'] .modal h2 {
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: -0.02em;
+}
+
+html[data-theme='object-bento'] button.link {
+  color: var(--bento-lavender);
+}
+
+html[data-theme='object-bento'] .info {
+  background: color-mix(in srgb, var(--bento-lavender) 10%, white);
+  border: 1px solid color-mix(in srgb, var(--bento-lavender) 25%, var(--bento-border));
+  color: var(--bento-text);
+  border-radius: 12px;
+}
+
+html[data-theme='object-bento'] .success-msg {
+  background: color-mix(in srgb, var(--bento-mint) 12%, white);
+  border-color: color-mix(in srgb, var(--bento-mint) 35%, var(--bento-border));
+}
+
+html[data-theme='object-bento'] .error {
+  color: var(--danger);
+}
+
+html[data-theme='object-bento'] .nav-expand-btn,
+html[data-theme='object-bento'] .theme-select-wrap {
+  color: var(--bento-muted);
+}
+
+html[data-theme='object-bento'] .nav-expand-btn {
+  background: var(--bento-card);
+  border: 1px solid var(--bento-border);
+}
+
+html[data-theme='object-bento'] .create-new-menu,
+html[data-theme='object-bento'] .profile-menu,
+html[data-theme='object-bento'] .widget-dropdown,
+html[data-theme='object-bento'] .column-picker-panel {
+  background: var(--bento-card);
+  border: 1px solid var(--bento-border);
+  box-shadow: var(--bento-shadow);
+  backdrop-filter: none;
+}
+
+html[data-theme='object-bento'] .deal-tile {
+  background: var(--bento-card);
+  border: 1px solid var(--bento-border);
+  border-radius: 16px;
+  box-shadow: var(--bento-shadow);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+html[data-theme='object-bento'] .deal-tile:hover,
+html[data-theme='object-bento'] .deal-tile:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(43, 45, 49, 0.08);
+  border-color: color-mix(in srgb, var(--bento-lavender) 40%, var(--bento-border));
+}
+
+html[data-theme='object-bento'] .deal-tile-amount {
+  color: var(--bento-mint);
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+html[data-theme='object-bento'] .deal-detail-sideband,
+html[data-theme='object-bento'] .deal-detail-main {
+  background: var(--bento-card);
+  border: 1px solid var(--bento-border);
+  border-radius: 16px;
+  box-shadow: var(--bento-shadow);
+}
+
+html[data-theme='object-bento'] .deal-won-btn {
+  background: var(--bento-mint);
+  border-color: var(--bento-mint);
+  color: #fff;
+}
+
+html[data-theme='object-bento'] .deal-lost-btn {
+  background: color-mix(in srgb, var(--bento-pink) 15%, white);
+  border-color: var(--bento-pink);
+  color: var(--bento-pink);
+}
+
+html[data-theme='object-bento'] .inline-link,
+html[data-theme='object-bento'] .deal-account-link-btn,
+html[data-theme='object-bento'] .deal-tile-account-link {
+  color: var(--bento-lavender);
+}
+
+html[data-theme='object-bento'] .contacts-sort-btn:hover {
+  color: var(--bento-lavender);
+}
+
+html[data-theme='object-bento'] .pagination-row button.secondary {
+  border-radius: 10px;
+}
+
+html[data-theme='object-bento'] .app-root .card.login-card {
+  background: var(--bento-card);
+}
+
+/* Header search & notifications */
+.bento-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex: 1;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: 0.75rem;
+}
+
+.bento-search {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  background: var(--bento-card);
+  border: 1px solid var(--bento-border);
+  border-radius: 12px;
+  box-shadow: var(--bento-shadow);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.bento-search:focus-within {
+  border-color: var(--bento-lavender);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bento-lavender) 18%, transparent);
+}
+
+.bento-search-icon {
+  color: var(--bento-muted);
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.bento-search input {
+  border: 0;
+  background: transparent;
+  width: 100%;
+  font-size: 0.9rem;
+  color: var(--bento-text);
+  outline: none;
+}
+
+.bento-icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid var(--bento-border);
+  background: var(--bento-card);
+  box-shadow: var(--bento-shadow);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.bento-icon-btn:hover {
+  transform: scale(1.04);
+  border-color: var(--bento-lavender);
+}
+
+.bento-notify-dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bento-pink);
+  border: 2px solid var(--bento-card);
+}
+
+/* Bento grid */
+.bento-dashboard {
+  margin-top: 0.5rem;
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.bento-card {
+  background: var(--bento-card);
+  border: 1px solid var(--bento-border);
+  border-radius: 18px;
+  padding: 1.1rem 1.15rem;
+  box-shadow: var(--bento-shadow);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.bento-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(43, 45, 49, 0.08);
+}
+
+.bento-card--span-2 {
+  grid-column: span 2;
+}
+
+.bento-card--revenue {
+  grid-column: span 2;
+}
+
+.bento-card--widget {
+  min-height: 320px;
+}
+
+.bento-card--widget .widget-card {
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  min-height: 0;
+  background: transparent;
+}
+
+.bento-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.bento-eyebrow {
+  margin: 0 0 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--bento-muted);
+}
+
+.bento-card-title {
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--bento-text);
+}
+
+.bento-pill {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--bento-border);
+  white-space: nowrap;
+}
+
+.bento-pill--mint {
+  background: color-mix(in srgb, var(--bento-mint) 14%, white);
+  color: color-mix(in srgb, var(--bento-mint) 85%, #000);
+}
+
+.bento-pill--lavender {
+  background: color-mix(in srgb, var(--bento-lavender) 12%, white);
+  color: var(--bento-lavender);
+}
+
+.bento-text-btn {
+  border: 0;
+  background: transparent;
+  color: var(--bento-lavender);
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.bento-revenue-body {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 1rem;
+  align-items: end;
+}
+
+.bento-stat-value {
+  display: block;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--bento-text);
+}
+
+.bento-stat-label {
+  font-size: 0.82rem;
+  color: var(--bento-muted);
+}
+
+.bento-bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.45rem;
+  height: 140px;
+}
+
+.bento-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.bento-bar {
+  width: 100%;
+  max-width: 36px;
+  border-radius: 8px 8px 4px 4px;
+  min-height: 8px;
+  transition: height 0.4s ease;
+}
+
+.bento-bar--mint {
+  background: linear-gradient(180deg, var(--bento-mint) 0%, color-mix(in srgb, var(--bento-mint) 70%, white) 100%);
+}
+
+.bento-bar-label {
+  font-size: 0.7rem;
+  color: var(--bento-muted);
+}
+
+.bento-pipeline {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.bento-pipeline-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  margin-bottom: 0.25rem;
+}
+
+.bento-pipeline-track {
+  height: 10px;
+  background: color-mix(in srgb, var(--bento-border) 40%, white);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bento-pipeline-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.35s ease;
+}
+
+.bento-pipeline-fill--lavender {
+  background: var(--bento-lavender);
+}
+.bento-pipeline-fill--mint {
+  background: var(--bento-mint);
+}
+.bento-pipeline-fill--orange {
+  background: var(--bento-orange);
+}
+.bento-pipeline-fill--pink {
+  background: var(--bento-pink);
+}
+
+.bento-task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.bento-task-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.55rem 0.5rem;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.bento-task-item:hover {
+  background: color-mix(in srgb, var(--bento-lavender) 6%, white);
+  border-color: var(--bento-border);
+}
+
+.bento-task-title {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--bento-text);
+}
+
+.bento-task-due {
+  font-size: 0.75rem;
+  color: var(--bento-muted);
+}
+
+.bento-hot-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--bento-pink);
+  transform: rotate(45deg);
+}
+
+.bento-distribution {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.bento-donut {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  margin: 0 auto;
+}
+
+.bento-donut-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.bento-donut-ring {
+  fill: none;
+  stroke-width: 14;
+  stroke-linecap: butt;
+}
+
+.bento-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  color: var(--bento-muted);
+}
+
+.bento-donut-center strong {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.1rem;
+  color: var(--bento-text);
+}
+
+.bento-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.bento-legend li {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.bento-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+/* Geometric avatars */
+.geo-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.geo-avatar--md {
+  width: 40px;
+  height: 40px;
+}
+
+.geo-avatar--sm {
+  width: 32px;
+  height: 32px;
+}
+
+.geo-avatar-shape {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  transform: rotate(-6deg);
+  border: 1px solid var(--bento-border);
+}
+
+.geo-avatar--sm .geo-avatar-shape {
+  border-radius: 8px;
+}
+
+.geo-avatar-text {
+  position: relative;
+  z-index: 1;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: var(--bento-text);
+}
+
+.geo-avatar--mint .geo-avatar-shape {
+  background: color-mix(in srgb, var(--bento-mint) 22%, white);
+}
+.geo-avatar--orange .geo-avatar-shape {
+  background: color-mix(in srgb, var(--bento-orange) 20%, white);
+}
+.geo-avatar--pink .geo-avatar-shape {
+  background: color-mix(in srgb, var(--bento-pink) 18%, white);
+}
+.geo-avatar--lavender .geo-avatar-shape {
+  background: color-mix(in srgb, var(--bento-lavender) 18%, white);
+}
+.geo-avatar--slate .geo-avatar-shape {
+  background: color-mix(in srgb, var(--bento-border) 35%, white);
+}
+
+@media (max-width: 1100px) {
+  .bento-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .bento-card--span-2,
+  .bento-card--revenue {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 640px) {
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+  .bento-card--span-2,
+  .bento-card--revenue {
+    grid-column: span 1;
+  }
+  .bento-revenue-body {
+    grid-template-columns: 1fr;
+  }
+  .bento-header-tools {
+    display: none;
+  }
+}

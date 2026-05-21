@@ -124,7 +124,6 @@ export type UserCreateRequest = {
   firstName: string
   lastName: string
   userGroup: string
-  password: string
   email: string
   phoneNumber: string
   addToGroup: string
@@ -132,7 +131,12 @@ export type UserCreateRequest = {
 
 export type UserCreateResponse = {
   userId: number
+  username: string
   message: string
+}
+
+export type SuggestUsernameResponse = {
+  username: string
 }
 
 export type UserSearchFilters = {
@@ -164,8 +168,8 @@ export async function login(username: string, password: string): Promise<LoginRe
     body: JSON.stringify({ username, password }),
   })
   if (!res.ok) {
-    const body = await parseJson<{ message?: string }>(res)
-    throw new Error(body.message ?? 'Login failed.')
+    const body = await parseJson<{ message?: string; error?: string }>(res)
+    throw new Error(body.message ?? body.error ?? 'Login failed.')
   }
   return parseJson<LoginResponse>(res)
 }
@@ -232,11 +236,11 @@ export async function logout(token: string): Promise<void> {
   })
 }
 
-export async function forgotPassword(email: string): Promise<ForgotResponse> {
+export async function forgotPassword(emailOrUsername: string): Promise<ForgotResponse> {
   const res = await fetch('/api/auth/forgot-password', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ emailOrUsername }),
   })
   if (!res.ok) {
     const body = await parseJson<{ message?: string }>(res)
@@ -789,6 +793,36 @@ export async function sendExportOnMail(
   }
 }
 
+export async function suggestMaintenanceUsername(
+  token: string,
+  firstName: string,
+): Promise<SuggestUsernameResponse> {
+  const params = new URLSearchParams({ firstName: firstName.trim() })
+  const res = await fetch(`/api/admin/user-maintenance/suggest-username?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not suggest username.')
+  }
+  return parseJson<SuggestUsernameResponse>(res)
+}
+
+export async function deactivateMaintenanceUser(
+  token: string,
+  userId: number,
+): Promise<{ userId: number; message: string }> {
+  const res = await fetch(`/api/admin/user-maintenance/users/${userId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const body = await parseJson<{ message?: string }>(res)
+    throw new Error(body.message ?? 'Could not remove user.')
+  }
+  return parseJson<{ userId: number; message: string }>(res)
+}
+
 export async function createMaintenanceUser(
   token: string,
   payload: UserCreateRequest,
@@ -802,8 +836,8 @@ export async function createMaintenanceUser(
     body: JSON.stringify(payload),
   })
   if (!res.ok) {
-    const body = await parseJson<{ message?: string }>(res)
-    throw new Error(body.message ?? 'Could not create user.')
+    const body = await parseJson<{ message?: string; error?: string }>(res)
+    throw new Error(body.message ?? body.error ?? `Could not create user (${res.status}).`)
   }
   return parseJson<UserCreateResponse>(res)
 }

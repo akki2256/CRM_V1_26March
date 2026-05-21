@@ -27,6 +27,7 @@ CREATE TABLE USERS (
     email                         VARCHAR2(255) NOT NULL UNIQUE,
     phone_number                  VARCHAR2(50),
     login_attempts                NUMBER(10) DEFAULT 0 NOT NULL,
+    welcome_password_attempts     NUMBER(10) DEFAULT 0 NOT NULL,
     user_status                   VARCHAR2(32) DEFAULT 'ACTIVE' NOT NULL,
     temporary_password_hash       VARCHAR2(255),
     temporary_password_expires_at   TIMESTAMP(6),

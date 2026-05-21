@@ -15,8 +15,6 @@ import com.crm.web.dto.TokenResponse;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
-import java.security.SecureRandom;
-import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.http.HttpStatus;
@@ -30,6 +28,9 @@ public class AuthService {
 
     private static final String SYSTEM = "SYSTEM";
 
+    private static final String WELCOME_ATTEMPTS_EXHAUSTED_MESSAGE =
+            "You have used all allowed attempts with your welcome password. Please use Forgot password to set a new password.";
+
     private final AppUserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
@@ -37,7 +38,6 @@ public class AuthService {
     private final PasswordPolicyService passwordPolicyService;
     private final MailNotificationService mailNotificationService;
     private final UserDirectoryService userDirectoryService;
-    private final SecureRandom secureRandom = new SecureRandom();
 
     public AuthService(
             AppUserRepository userRepository,
@@ -56,13 +56,16 @@ public class AuthService {
         this.userDirectoryService = userDirectoryService;
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = ApiException.class)
     public LoginResponse login(LoginRequest request) {
         Optional<AppUser> opt = userRepository.findByUsernameIgnoreCase(request.username().trim());
         if (opt.isEmpty()) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid user ID or password.");
         }
         AppUser user = opt.get();
+        if (user.getUserStatus() == UserStatus.INACTIVE) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Account is not active.");
+        }
         if (user.getUserStatus() == UserStatus.LOCKED) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Account is locked. Contact an administrator.");
         }
@@ -70,23 +73,39 @@ public class AuthService {
             throw new ApiException(HttpStatus.FORBIDDEN, "Account is not active.");
         }
 
+        int welcomeMax = appProperties.getSecurity().getWelcomePasswordMaxAttempts();
+        if (user.isMustChangePassword() && user.getWelcomePasswordAttempts() >= welcomeMax) {
+            throw new ApiException(HttpStatus.FORBIDDEN, WELCOME_ATTEMPTS_EXHAUSTED_MESSAGE);
+        }
+
         String raw = request.password();
         boolean regularMatch = passwordEncoder.matches(raw, user.getPasswordHash());
         boolean tempMatch = isTemporaryPasswordValid(user, raw);
 
         if (!regularMatch && !tempMatch) {
+            if (user.isMustChangePassword()) {
+                throw welcomePasswordFailedException(user, welcomeMax);
+            }
+            if (hasActiveTemporaryPassword(user)) {
+                throw welcomePasswordFailedException(user, welcomeMax);
+            }
             registerFailedAttempt(user);
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid user ID or password.");
+            throw failedLoginException(user);
         }
 
         if (tempMatch) {
             user.setMustChangePassword(true);
             user.setTemporaryPasswordHash(null);
             user.setTemporaryPasswordExpiresAt(null);
+            user.setWelcomePasswordAttempts(0);
         }
 
         boolean requiresChange = user.isMustChangePassword();
         user.setLoginAttempts(0);
+        user.setWelcomePasswordAttempts(0);
+        if (user.getUserStatus() == UserStatus.LOCKED) {
+            user.setUserStatus(UserStatus.ACTIVE);
+        }
         touchUser(user, user.getUsername());
         userRepository.save(user);
 
@@ -95,19 +114,48 @@ public class AuthService {
     }
 
     @Transactional
-    public void forgotPassword(String email) {
-        AppUser user = userRepository
-                .findByEmailIgnoreCase(email.trim())
-                .orElse(null);
-        if (user == null) {
-            return;
+    public void forgotPassword(String emailOrUsername) {
+        AppUser user = resolveUserForPasswordRecovery(emailOrUsername);
+        if (user.getUserStatus() == UserStatus.INACTIVE) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "This account is not active. Password reset is not available for removed users.");
         }
-        String plain = randomTempPassword();
+        if (user.getUserStatus() == UserStatus.LOCKED) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "Account is locked. Contact an administrator before resetting your password.");
+        }
+        if (user.getUserStatus() != UserStatus.ACTIVE) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN, "Password reset is only available for active accounts.");
+        }
+
+        String plain = passwordPolicyService.generateCompliantPassword();
         user.setTemporaryPasswordHash(passwordEncoder.encode(plain));
         user.setTemporaryPasswordExpiresAt(LocalDateTime.now(ZoneOffset.UTC).plus(10, ChronoUnit.MINUTES));
+        user.setWelcomePasswordAttempts(0);
+        user.setMustChangePassword(true);
+        user.setLoginAttempts(0);
         touchUser(user, SYSTEM);
         userRepository.save(user);
-        mailNotificationService.sendTemporaryPassword(user.getEmail(), user.getUsername(), plain);
+        mailNotificationService.sendTemporaryPassword(
+                user.getEmail(), user.getFirstName(), user.getUsername(), plain);
+    }
+
+    private AppUser resolveUserForPasswordRecovery(String emailOrUsername) {
+        String key = emailOrUsername == null ? "" : emailOrUsername.trim();
+        if (key.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Email or user ID is required.");
+        }
+        Optional<AppUser> user;
+        if (key.contains("@")) {
+            user = userRepository.findByEmailIgnoreCase(key);
+        } else {
+            user = userRepository.findByUsernameIgnoreCase(key);
+        }
+        return user.orElseThrow(() -> new ApiException(
+                HttpStatus.NOT_FOUND, "No account found for that email or user ID."));
     }
 
     @Transactional(readOnly = true)
@@ -131,6 +179,9 @@ public class AuthService {
         passwordPolicyService.validate(request.newPassword());
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         user.setMustChangePassword(false);
+        user.setWelcomePasswordAttempts(0);
+        user.setTemporaryPasswordHash(null);
+        user.setTemporaryPasswordExpiresAt(null);
         touchUser(user, user.getUsername());
         userRepository.save(user);
         String token = jwtService.generateToken(user, false);
@@ -154,14 +205,33 @@ public class AuthService {
                 user.isMustChangePassword());
     }
 
-    private boolean isTemporaryPasswordValid(AppUser user, String rawPassword) {
+    private boolean hasActiveTemporaryPassword(AppUser user) {
         if (user.getTemporaryPasswordHash() == null || user.getTemporaryPasswordExpiresAt() == null) {
             return false;
         }
-        if (user.getTemporaryPasswordExpiresAt().isBefore(LocalDateTime.now(ZoneOffset.UTC))) {
+        return !user.getTemporaryPasswordExpiresAt().isBefore(LocalDateTime.now(ZoneOffset.UTC));
+    }
+
+    private boolean isTemporaryPasswordValid(AppUser user, String rawPassword) {
+        if (!hasActiveTemporaryPassword(user)) {
             return false;
         }
         return passwordEncoder.matches(rawPassword, user.getTemporaryPasswordHash());
+    }
+
+    private ApiException welcomePasswordFailedException(AppUser user, int welcomeMax) {
+        int nextWelcome = user.getWelcomePasswordAttempts() + 1;
+        user.setWelcomePasswordAttempts(nextWelcome);
+        persistSecurityCounters(user);
+        if (nextWelcome >= welcomeMax) {
+            return new ApiException(HttpStatus.FORBIDDEN, WELCOME_ATTEMPTS_EXHAUSTED_MESSAGE);
+        }
+        int remaining = welcomeMax - nextWelcome;
+        return new ApiException(
+                HttpStatus.UNAUTHORIZED,
+                "Invalid user ID or password. "
+                        + remaining
+                        + " welcome password attempt(s) remaining.");
     }
 
     private void registerFailedAttempt(AppUser user) {
@@ -170,8 +240,30 @@ public class AuthService {
         if (next >= appProperties.getSecurity().getMaxLoginAttempts()) {
             user.setUserStatus(UserStatus.LOCKED);
         }
-        touchUser(user, SYSTEM);
+        persistSecurityCounters(user);
+    }
+
+    /** Persists login/welcome counters without bumping optimistic concurrency (oca_control). */
+    private void persistSecurityCounters(AppUser user) {
+        user.setLastUpdatedBy(SYSTEM);
+        user.setLastUpdatedDate(LocalDateTime.now(ZoneOffset.UTC));
         userRepository.save(user);
+    }
+
+    private ApiException failedLoginException(AppUser user) {
+        if (user.getUserStatus() == UserStatus.LOCKED) {
+            return new ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "Account is locked after too many failed login attempts. Contact an administrator.");
+        }
+        int max = appProperties.getSecurity().getMaxLoginAttempts();
+        int remaining = Math.max(0, max - user.getLoginAttempts());
+        if (remaining > 0 && remaining <= max) {
+            return new ApiException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Invalid user ID or password. " + remaining + " attempt(s) remaining before the account is locked.");
+        }
+        return new ApiException(HttpStatus.UNAUTHORIZED, "Invalid user ID or password.");
     }
 
     private void touchUser(AppUser user, String actor) {
@@ -180,9 +272,4 @@ public class AuthService {
         user.setOcaControl(user.getOcaControl() + 1);
     }
 
-    private String randomTempPassword() {
-        byte[] buf = new byte[12];
-        secureRandom.nextBytes(buf);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
-    }
 }

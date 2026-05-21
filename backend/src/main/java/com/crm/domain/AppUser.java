@@ -43,6 +43,9 @@ public class AppUser {
     @Column(name = "login_attempts", nullable = false)
     private int loginAttempts = 0;
 
+    @Column(name = "welcome_password_attempts", nullable = false)
+    private int welcomePasswordAttempts = 0;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "user_status", nullable = false, length = 32)
     private UserStatus userStatus = UserStatus.ACTIVE;
@@ -129,6 +132,14 @@ public class AppUser {
 
     public void setLoginAttempts(int loginAttempts) {
         this.loginAttempts = loginAttempts;
+    }
+
+    public int getWelcomePasswordAttempts() {
+        return welcomePasswordAttempts;
+    }
+
+    public void setWelcomePasswordAttempts(int welcomePasswordAttempts) {
+        this.welcomePasswordAttempts = welcomePasswordAttempts;
     }
 
     public UserStatus getUserStatus() {

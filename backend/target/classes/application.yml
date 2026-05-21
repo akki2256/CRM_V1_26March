@@ -8,6 +8,8 @@ server:
 #   PDB service: jdbc:oracle:thin:@//localhost:1521/FREEPDB1
 #   SID style:   jdbc:oracle:thin:@localhost:1521:XE
 spring:
+  config:
+    import: optional:classpath:application-local.yml
   servlet:
     multipart:
       max-file-size: 32MB
@@ -52,7 +54,12 @@ app:
     expiration-ms: ${JWT_EXPIRATION_MS:3600000}
   security:
     max-login-attempts: 5
+    welcome-password-max-attempts: 3
   mail:
     from: ${MAIL_FROM:noreply@example.com}
+  resend:
+    api-key: ${RESEND_API_KEY:}
+    from: ${RESEND_FROM:onboarding@resend.dev}
+    welcome-email-to: ${RESEND_WELCOME_EMAIL_TO:}
   cors:
     allowed-origins: ${CORS_ORIGINS:http://localhost:5173}

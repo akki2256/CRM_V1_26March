@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
     email                        VARCHAR(255) NOT NULL UNIQUE,
     phone_number                 VARCHAR(50),
     login_attempts               INT NOT NULL DEFAULT 0,
+    welcome_password_attempts    INT NOT NULL DEFAULT 0,
     user_status                  VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
     temporary_password_hash      VARCHAR(255),
     temporary_password_expires_at TIMESTAMPTZ,

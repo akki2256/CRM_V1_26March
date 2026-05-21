@@ -4,6 +4,8 @@ import {
   changePasswordAfterReset,
   createAlignment,
   createMaintenanceUser,
+  deactivateMaintenanceUser,
+  suggestMaintenanceUsername,
   createContact,
   createDeal,
   DEAL_CURRENCY_OPTIONS,
@@ -29,8 +31,7 @@ import {
   type MeResponse,
   type UserMaintenanceRow,
 } from './api/client'
-import ContactByLabelWidget from './components/ContactByLabelWidget'
-import DealOutcomeTrendWidget from './components/DealOutcomeTrendWidget'
+import BentoDashboard from './components/BentoDashboard'
 import Spinner from './components/Spinner'
 import { submenuRegistry } from './screens/submenus/submenuRegistry'
 
@@ -38,9 +39,17 @@ type ForgotStep = 'menu' | 'password' | 'userid'
 type MenuKey = 'dashboard' | 'sales' | 'marketing' | 'logs' | 'admin'
 type CreateNewOption = 'contact' | 'deal'
 type YesNo = 'Yes' | 'No'
-type ThemeName = 'navy' | 'slate-blue' | 'midnight-purple' | 'forest-night' | 'frost-light' | 'sand-light'
+type ThemeName =
+  | 'object-bento'
+  | 'navy'
+  | 'slate-blue'
+  | 'midnight-purple'
+  | 'forest-night'
+  | 'frost-light'
+  | 'sand-light'
 
 const THEME_OPTIONS: { value: ThemeName; label: string }[] = [
+  { value: 'object-bento', label: '✨ Object Bento' },
   { value: 'navy', label: '🔵 Deep Navy' },
   { value: 'slate-blue', label: '⚪ Bluish Grey' },
   { value: 'midnight-purple', label: '🟣 Midnight Purple' },
@@ -77,8 +86,8 @@ type AddUserForm = {
   firstName: string
   lastName: string
   userGroup: string
-  password: string
   email: string
+  phoneCountryCode: string
   phoneNumber: string
   addToGroup: string
 }
@@ -101,17 +110,6 @@ const MENU_ITEMS: { key: MenuKey; label: string; icon: string; submenus: string[
   { key: 'marketing', label: 'Marketing', icon: '📣', submenus: ['Forms'] },
   { key: 'logs', label: 'Logs', icon: '🗂️', submenus: [] },
   { key: 'admin', label: 'Admin', icon: '🛠️', submenus: ['User Maintenance'] },
-]
-
-const WIDGET_CHOICES = [
-  'Contact by Label',
-  'Deals Won/Lost Trend',
-  'Revenue Summary',
-  'Sales Funnel',
-  'Pipeline by Stage',
-  'Top Accounts',
-  'Activities Due',
-  'Quote Conversion',
 ]
 
 type UserColumnId = 'username' | 'firstName' | 'lastName' | 'userGroups' | 'alignments' | 'email' | 'phoneNumber'
@@ -137,20 +135,140 @@ const CONTACT_FORM_PURPOSE_OPTIONS = [
 
 const CONTACT_FORM_EMPLOYMENT_OPTIONS = ['Self Employed', 'Full time', 'Part time', 'Casual'] as const
 
-/** Dial codes stored in CONTACT.country_code (digits). Default Australia +61. */
-const COUNTRY_PHONE_OPTIONS: { flag: string; name: string; dial: string; value: string }[] = [
-  { flag: '🇦🇺', name: 'Australia', dial: '+61', value: '61' },
-  { flag: '🇳🇿', name: 'New Zealand', dial: '+64', value: '64' },
-  { flag: '🇺🇸', name: 'United States / Canada', dial: '+1', value: '1' },
-  { flag: '🇬🇧', name: 'United Kingdom', dial: '+44', value: '44' },
-  { flag: '🇮🇳', name: 'India', dial: '+91', value: '91' },
-  { flag: '🇸🇬', name: 'Singapore', dial: '+65', value: '65' },
-  { flag: '🇭🇰', name: 'Hong Kong', dial: '+852', value: '852' },
-  { flag: '🇯🇵', name: 'Japan', dial: '+81', value: '81' },
-  { flag: '🇨🇳', name: 'China', dial: '+86', value: '86' },
-  { flag: '🇩🇪', name: 'Germany', dial: '+49', value: '49' },
-  { flag: '🇫🇷', name: 'France', dial: '+33', value: '33' },
+/** Dial codes (digits). iso2 = ISO country code for flag image. */
+const COUNTRY_PHONE_OPTIONS: {
+  iso2: string
+  name: string
+  dial: string
+  value: string
+  nationalLength: number
+}[] = [
+  { iso2: 'in', name: 'India', dial: '+91', value: '91', nationalLength: 10 },
+  { iso2: 'au', name: 'Australia', dial: '+61', value: '61', nationalLength: 9 },
+  { iso2: 'nz', name: 'New Zealand', dial: '+64', value: '64', nationalLength: 9 },
+  { iso2: 'us', name: 'United States / Canada', dial: '+1', value: '1', nationalLength: 10 },
+  { iso2: 'gb', name: 'United Kingdom', dial: '+44', value: '44', nationalLength: 10 },
+  { iso2: 'sg', name: 'Singapore', dial: '+65', value: '65', nationalLength: 8 },
+  { iso2: 'hk', name: 'Hong Kong', dial: '+852', value: '852', nationalLength: 8 },
+  { iso2: 'jp', name: 'Japan', dial: '+81', value: '81', nationalLength: 10 },
+  { iso2: 'cn', name: 'China', dial: '+86', value: '86', nationalLength: 11 },
+  { iso2: 'de', name: 'Germany', dial: '+49', value: '49', nationalLength: 11 },
+  { iso2: 'fr', name: 'France', dial: '+33', value: '33', nationalLength: 9 },
 ]
+
+function countryFlagUrl(iso2: string): string {
+  return `https://flagcdn.com/w40/${iso2}.png`
+}
+
+function CountryFlagIcon({ iso2 }: { iso2: string }) {
+  return (
+    <img
+      className="add-user-country-flag-img"
+      src={countryFlagUrl(iso2)}
+      srcSet={`https://flagcdn.com/w80/${iso2}.png 2x`}
+      width={24}
+      height={18}
+      alt=""
+      loading="lazy"
+      decoding="async"
+    />
+  )
+}
+
+function CountryCodeChevron() {
+  return (
+    <svg className="add-user-country-chevron" width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+      <path
+        d="M2.5 4.5 6 8 9.5 4.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function phoneRulesForCountry(countryCode: string) {
+  const match =
+    COUNTRY_PHONE_OPTIONS.find((c) => c.value === countryCode) ??
+    COUNTRY_PHONE_OPTIONS[0]
+  return match
+}
+
+function sanitizeNationalPhone(digits: string, countryCode: string): string {
+  const max = phoneRulesForCountry(countryCode).nationalLength
+  return digits.replace(/\D/g, '').slice(0, max)
+}
+
+function AddUserCountryCodePicker({
+  value,
+  onChange,
+  onBlur,
+}: {
+  value: string
+  onChange: (code: string) => void
+  onBlur?: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const selected = phoneRulesForCountry(value)
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    function onDocMouseDown(event: MouseEvent) {
+      const root = rootRef.current
+      if (root && !root.contains(event.target as Node)) {
+        setOpen(false)
+        onBlur?.()
+      }
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    return () => document.removeEventListener('mousedown', onDocMouseDown)
+  }, [open, onBlur])
+
+  return (
+    <div className="add-user-country-picker" ref={rootRef}>
+      <button
+        type="button"
+        className="add-user-country-trigger"
+        aria-label={`Country ${selected.name}, code ${selected.dial}`}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <CountryFlagIcon iso2={selected.iso2} />
+        <span className="add-user-country-dial">{selected.dial}</span>
+        <CountryCodeChevron />
+      </button>
+      {open && (
+        <ul className="add-user-country-menu" role="listbox" aria-label="Country calling code">
+          {COUNTRY_PHONE_OPTIONS.map((c) => (
+            <li key={c.value} role="none">
+              <button
+                type="button"
+                role="option"
+                aria-selected={c.value === value}
+                className={`add-user-country-option${c.value === value ? ' selected' : ''}`}
+                onClick={() => {
+                  onChange(c.value)
+                  setOpen(false)
+                  onBlur?.()
+                }}
+              >
+                <CountryFlagIcon iso2={c.iso2} />
+                <span className="add-user-country-dial">{c.dial}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 const INITIAL_CONTACT_FORM: ContactForm = {
   agentEmail: '',
@@ -180,8 +298,8 @@ const INITIAL_ADD_USER_FORM: AddUserForm = {
   firstName: '',
   lastName: '',
   userGroup: '',
-  password: '',
   email: '',
+  phoneCountryCode: '91',
   phoneNumber: '',
   addToGroup: '',
 }
@@ -212,12 +330,13 @@ function emptyDealForm(profile: MeResponse | null): DealForm {
 }
 
 function App() {
+  const [headerSearch, setHeaderSearch] = useState('')
   const [theme, setTheme] = useState<ThemeName>(() => {
     const saved = localStorage.getItem('crm_theme')
     if (THEME_OPTIONS.some((opt) => opt.value === saved)) {
       return saved as ThemeName
     }
-    return 'navy'
+    return 'object-bento'
   })
   const [token, setTokenState] = useState<string | null>(() => getToken())
   const [profile, setProfile] = useState<MeResponse | null>(null)
@@ -229,7 +348,8 @@ function App() {
   const [forgotStep, setForgotStep] = useState<ForgotStep>('menu')
   const [recoveryEmail, setRecoveryEmail] = useState('')
   const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null)
-  const [changePwdOpen, setChangePwdOpen] = useState(false)
+  const [recoveryIsError, setRecoveryIsError] = useState(false)
+  const [requiresPasswordChange, setRequiresPasswordChange] = useState(false)
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
 
@@ -301,6 +421,7 @@ function App() {
     phoneNumber: '',
   })
   const [hoveredUserHeader, setHoveredUserHeader] = useState<UserColumnId | null>(null)
+  const [pinnedUserFilterColumn, setPinnedUserFilterColumn] = useState<UserColumnId | null>(null)
   const [addUserOpen, setAddUserOpen] = useState(false)
   const [addUserForm, setAddUserForm] = useState<AddUserForm>(INITIAL_ADD_USER_FORM)
   const [addUserTouched, setAddUserTouched] = useState<Record<string, boolean>>({})
@@ -310,32 +431,39 @@ function App() {
   const [displayUserRow, setDisplayUserRow] = useState<UserMaintenanceRow | null>(null)
   const [currentUsersPage, setCurrentUsersPage] = useState(1)
   const [addUserSubmitting, setAddUserSubmitting] = useState(false)
+  const [addUserApiError, setAddUserApiError] = useState<string | null>(null)
+  const [usernameSuggesting, setUsernameSuggesting] = useState(false)
+  const [deleteUserTarget, setDeleteUserTarget] = useState<UserMaintenanceRow | null>(null)
+  const [deleteUserSubmitting, setDeleteUserSubmitting] = useState(false)
 
-  const [widgetDropdownOpen, setWidgetDropdownOpen] = useState(false)
-  const [selectedWidgets, setSelectedWidgets] = useState<string[]>([
-    'Contact by Label',
-    'Revenue Summary',
-    'Sales Funnel',
-    'Pipeline by Stage',
-  ])
-  const [draftWidgets, setDraftWidgets] = useState<string[]>(selectedWidgets)
   const [preferencesStatus, setPreferencesStatus] = useState<string | null>(null)
   const createNewRef = useRef<HTMLDivElement | null>(null)
   const profileRef = useRef<HTMLDivElement | null>(null)
-  const widgetDropdownRef = useRef<HTMLDivElement | null>(null)
 
   const loadProfile = useCallback(async (t: string) => {
     const m = await me(t)
     setProfile(m)
-    if (m.mustChangePassword) {
-      setChangePwdOpen(true)
-    }
+    setRequiresPasswordChange(m.mustChangePassword)
   }, [])
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('crm_theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    if (!requiresPasswordChange) {
+      return
+    }
+    function blockEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }
+    document.addEventListener('keydown', blockEscape, true)
+    return () => document.removeEventListener('keydown', blockEscape, true)
+  }, [requiresPasswordChange])
 
   useEffect(() => {
     if (!token) {
@@ -392,13 +520,6 @@ function App() {
     }
   }, [token])
 
-  const preferencesKey = useMemo(() => {
-    if (!profile?.username) {
-      return null
-    }
-    return `crm_dashboard_widgets_${profile.username.toLowerCase()}`
-  }, [profile?.username])
-
   const isAdminOrManagerUser = useMemo(
     () =>
       Boolean(
@@ -410,33 +531,9 @@ function App() {
     [profile?.groups],
   )
 
-  useEffect(() => {
-    if (!preferencesKey) {
-      return
-    }
-    const saved = localStorage.getItem(preferencesKey)
-    if (!saved) {
-      return
-    }
-    try {
-      const parsed = JSON.parse(saved) as string[]
-      const valid = parsed.filter((item) => WIDGET_CHOICES.includes(item))
-      if (valid.length > 0) {
-        setSelectedWidgets(valid)
-      }
-    } catch {
-      /* ignore malformed local storage */
-    }
-  }, [preferencesKey])
-
-  useEffect(() => {
-    setDraftWidgets(selectedWidgets)
-  }, [selectedWidgets])
-
   function closeFloatingPopups() {
     setCreateNewOpen(false)
     setProfileMenuOpen(false)
-    setWidgetDropdownOpen(false)
   }
 
   const loadUserMaintenanceData = useCallback(async () => {
@@ -492,9 +589,6 @@ function App() {
         return
       }
       if (profileRef.current && profileRef.current.contains(target)) {
-        return
-      }
-      if (widgetDropdownRef.current && widgetDropdownRef.current.contains(target)) {
         return
       }
       closeFloatingPopups()
@@ -647,7 +741,7 @@ function App() {
       setActiveMenu('dashboard')
       setActiveSubmenuByMenu({ dashboard: null, sales: null, marketing: null, logs: null, admin: null })
       if (res.requiresPasswordChange) {
-        setChangePwdOpen(true)
+        setRequiresPasswordChange(true)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed.')
@@ -668,7 +762,7 @@ function App() {
     setToken(null)
     setTokenState(null)
     setProfile(null)
-    setChangePwdOpen(false)
+    setRequiresPasswordChange(false)
     setProfileMenuOpen(false)
     setActiveMenu('dashboard')
     setActiveSubmenuByMenu({ dashboard: null, sales: null, marketing: null, logs: null, admin: null })
@@ -731,7 +825,17 @@ function App() {
     const digitsRegex = /^\d+$/
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-    if (!values.username.trim()) errors.username = 'Username is required.'
+    if (!values.username.trim()) {
+      errors.username = values.firstName.trim()
+        ? 'Generating username… enter a valid first name or wait a moment.'
+        : 'Username is generated after you enter first name.'
+    } else if (values.firstName.trim()) {
+      const prefix = values.firstName.trim().replace(/[^A-Za-z]/g, '').slice(0, 2).toLowerCase()
+      const uname = values.username.trim().toLowerCase()
+      if (prefix.length >= 1 && !new RegExp(`^${prefix}\\d{4}$`).test(uname)) {
+        errors.username = 'Username is out of date. Adjust first name and wait for it to refresh.'
+      }
+    }
     if (!values.firstName.trim()) {
       errors.firstName = 'First Name is required.'
     } else if (!nameRegex.test(values.firstName.trim())) {
@@ -743,26 +847,79 @@ function App() {
       errors.lastName = 'Last Name can contain only letters and spaces.'
     }
     if (!values.userGroup) errors.userGroup = 'User Group is required.'
-    if (!values.password) errors.password = 'Password is required.'
     if (!values.email.trim()) {
       errors.email = 'Email is required.'
     } else if (!emailRegex.test(values.email.trim())) {
       errors.email = 'Please enter a valid email address.'
     }
-    if (!values.phoneNumber.trim()) {
+    const phoneRules = phoneRulesForCountry(values.phoneCountryCode)
+    const national = values.phoneNumber.trim()
+    if (!national) {
       errors.phoneNumber = 'Phone Number is required.'
-    } else if (!digitsRegex.test(values.phoneNumber.trim())) {
+    } else if (!digitsRegex.test(national)) {
       errors.phoneNumber = 'Phone Number must contain digits only.'
+    } else if (national.length !== phoneRules.nationalLength) {
+      errors.phoneNumber = `Enter ${phoneRules.nationalLength} digits for ${phoneRules.name} (without country code).`
     }
     return errors
   }
 
+  function handleAddUserPhoneCountryChange(countryCode: string) {
+    setAddUserForm((p) => ({
+      ...p,
+      phoneCountryCode: countryCode,
+      phoneNumber: sanitizeNationalPhone(p.phoneNumber, countryCode),
+    }))
+  }
+
+  function handleAddUserPhoneNumberChange(raw: string) {
+    setAddUserForm((p) => ({
+      ...p,
+      phoneNumber: sanitizeNationalPhone(raw, p.phoneCountryCode),
+    }))
+  }
+
   const addUserErrors = useMemo(() => addUserValidation(addUserForm), [addUserForm])
 
+  useEffect(() => {
+    if (!addUserOpen || !token) return
+    const first = addUserForm.firstName.trim()
+    const nameRegex = /^[A-Za-z ]+$/
+    if (!first || !nameRegex.test(first)) {
+      if (addUserForm.username) {
+        setAddUserForm((p) => ({ ...p, username: '' }))
+      }
+      return
+    }
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setUsernameSuggesting(true)
+        try {
+          const res = await suggestMaintenanceUsername(token, first)
+          if (!cancelled) {
+            setAddUserForm((p) => ({ ...p, username: res.username }))
+          }
+        } catch {
+          if (!cancelled) {
+            setAddUserForm((p) => ({ ...p, username: '' }))
+          }
+        } finally {
+          if (!cancelled) {
+            setUsernameSuggesting(false)
+          }
+        }
+      })()
+    }, 300)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [addUserOpen, addUserForm.firstName, token])
+
   function showAddUserError(field: keyof AddUserForm): string | null {
-    if (!addUserErrors[field]) return null
-    if (addUserSubmitTried || addUserTouched[field]) return addUserErrors[field]
-    return null
+    if (!addUserSubmitTried && !addUserTouched[field]) return null
+    return addUserErrors[field] ?? null
   }
 
   function touchAddUserField(field: keyof AddUserForm) {
@@ -771,24 +928,40 @@ function App() {
 
   async function submitAddUser(e: React.FormEvent) {
     e.preventDefault()
+    setAddUserApiError(null)
     setAddUserSubmitTried(true)
-    if (Object.keys(addUserErrors).length > 0) return
+    const validationErrors = addUserValidation(addUserForm)
+    if (usernameSuggesting) {
+      setAddUserApiError('Please wait for the username to finish generating.')
+      return
+    }
+    if (Object.keys(validationErrors).length > 0) return
     if (!token) {
-      setError('Your session has expired. Please sign in again.')
+      setAddUserApiError('Your session has expired. Please sign in again.')
       return
     }
     setAddUserSubmitting(true)
     try {
-      const result = await createMaintenanceUser(token, addUserForm)
+      const payload = {
+        username: addUserForm.username.trim(),
+        firstName: addUserForm.firstName.trim(),
+        lastName: addUserForm.lastName.trim(),
+        userGroup: addUserForm.userGroup.trim(),
+        email: addUserForm.email.trim(),
+        phoneNumber: `${addUserForm.phoneCountryCode.trim()}${addUserForm.phoneNumber.trim()}`,
+        addToGroup: addUserForm.addToGroup.trim(),
+      }
+      const result = await createMaintenanceUser(token, payload)
       setAddUserOpen(false)
       setAddUserForm(INITIAL_ADD_USER_FORM)
       setAddUserTouched({})
       setAddUserSubmitTried(false)
-      setPreferencesStatus(`${result.message} (ID: ${result.userId})`)
+      setAddUserApiError(null)
+      setPreferencesStatus(`${result.message} User ID: ${result.username} (ID: ${result.userId})`)
       setTimeout(() => setPreferencesStatus(null), 3000)
       await loadUserMaintenanceData()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create user.')
+      setAddUserApiError(err instanceof Error ? err.message : 'Could not create user.')
     } finally {
       setAddUserSubmitting(false)
     }
@@ -818,6 +991,24 @@ function App() {
       setAddAlignmentError(err instanceof Error ? err.message : 'Could not create alignment.')
     } finally {
       setAddAlignmentSubmitting(false)
+    }
+  }
+
+  async function confirmDeleteUser() {
+    if (!token || !deleteUserTarget) return
+    setDeleteUserSubmitting(true)
+    setError(null)
+    try {
+      const result = await deactivateMaintenanceUser(token, deleteUserTarget.userId)
+      setDeleteUserTarget(null)
+      setDisplayMenuUserId(null)
+      setPreferencesStatus(result.message)
+      setTimeout(() => setPreferencesStatus(null), 4000)
+      await loadUserMaintenanceData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not remove user.')
+    } finally {
+      setDeleteUserSubmitting(false)
     }
   }
 
@@ -852,6 +1043,21 @@ function App() {
   function applyUserHeaderContains(col: UserColumnId) {
     setAppliedUserColumnFilters((prev) => ({ ...prev, [col]: userColumnFilterDraft[col].trim() }))
     setCurrentUsersPage(1)
+  }
+
+  function shouldShowUserColumnFilter(col: UserColumnId): boolean {
+    if (hoveredUserHeader === col || pinnedUserFilterColumn === col) {
+      return true
+    }
+    if (userColumnFilterDraft[col].trim() || appliedUserColumnFilters[col].trim()) {
+      return true
+    }
+    return false
+  }
+
+  function togglePinnedUserFilter(col: UserColumnId) {
+    setPinnedUserFilterColumn((prev) => (prev === col ? null : col))
+    setHoveredUserHeader(col)
   }
 
   async function openDisplayUser(userId: number) {
@@ -1084,50 +1290,33 @@ function App() {
     return null
   }
 
-  function handleWidgetToggle(widgetName: string) {
-    setDraftWidgets((prev) =>
-      prev.includes(widgetName)
-        ? prev.filter((item) => item !== widgetName)
-        : [...prev, widgetName],
-    )
-  }
-
-  function handleWidgetSubmit() {
-    setSelectedWidgets(draftWidgets.length > 0 ? draftWidgets : [])
-    setWidgetDropdownOpen(false)
-  }
-
-  function handleWidgetCancel() {
-    setDraftWidgets(selectedWidgets)
-    setWidgetDropdownOpen(false)
-  }
-
-  function handleSavePreferences() {
-    if (!preferencesKey) {
-      return
-    }
-    localStorage.setItem(preferencesKey, JSON.stringify(selectedWidgets))
-    setPreferencesStatus('Preferences saved for this user.')
-    setTimeout(() => setPreferencesStatus(null), 2400)
-  }
-
   function openForgot() {
     setForgotOpen(true)
     setForgotStep('menu')
     setRecoveryEmail('')
     setRecoveryMessage(null)
+    setRecoveryIsError(false)
     setError(null)
   }
 
   async function submitForgotPassword(e: React.FormEvent) {
     e.preventDefault()
     setRecoveryMessage(null)
+    setRecoveryIsError(false)
+    const identifier = recoveryEmail.trim()
+    if (!identifier) {
+      setRecoveryMessage('Enter your email or user ID.')
+      setRecoveryIsError(true)
+      return
+    }
     setBusy(true)
     try {
-      const r = await forgotPassword(recoveryEmail.trim())
+      const r = await forgotPassword(identifier)
       setRecoveryMessage(r.message)
+      setRecoveryIsError(false)
     } catch (err) {
       setRecoveryMessage(err instanceof Error ? err.message : 'Request failed.')
+      setRecoveryIsError(true)
     } finally {
       setBusy(false)
     }
@@ -1164,7 +1353,7 @@ function App() {
       setTokenState(res.accessToken)
       setNewPassword('')
       setConfirmPassword('')
-      setChangePwdOpen(false)
+      setRequiresPasswordChange(false)
       await loadProfile(res.accessToken)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update password.')
@@ -1174,7 +1363,8 @@ function App() {
   }
 
   const sessionLoading = Boolean(token && !profile)
-  const showDashboard = Boolean(token && profile)
+  const showDashboard = Boolean(token && profile && !requiresPasswordChange)
+  const showForcedPasswordChange = Boolean(token && requiresPasswordChange)
   const usersPageSize = 10
   const filteredUserRows = useMemo(() => {
     return userRows.filter((row) =>
@@ -1262,9 +1452,30 @@ function App() {
           <section className="main-panel">
             <header className="top-bar">
               <div>
-                <h1>Dashboard</h1>
+                <h1>{activeMenu === 'dashboard' && !activeSubmenu ? 'Overview' : activeSubmenu ?? MENU_ITEMS.find((m) => m.key === activeMenu)?.label ?? 'CRM'}</h1>
                 <p className="muted">Signed in as <strong>{profile?.firstName} {profile?.lastName}</strong> ({profile?.username})</p>
               </div>
+              {theme === 'object-bento' ? (
+                <div className="bento-header-tools">
+                  <label className="bento-search">
+                    <span className="bento-search-icon" aria-hidden>⌕</span>
+                    <input
+                      type="search"
+                      placeholder="Search deals, contacts…"
+                      value={headerSearch}
+                      onChange={(e) => setHeaderSearch(e.target.value)}
+                      aria-label="Search CRM"
+                    />
+                  </label>
+                  <button type="button" className="bento-icon-btn" aria-label="Notifications">
+                    <span aria-hidden>◆</span>
+                    <span className="bento-notify-dot" />
+                  </button>
+                  <button type="button" className="bento-icon-btn" aria-label="Quick actions">
+                    <span aria-hidden>◇</span>
+                  </button>
+                </div>
+              ) : null}
               <div className="top-actions">
                 <label className="theme-select-wrap">
                   <span>Theme</span>
@@ -1328,7 +1539,19 @@ function App() {
             {activeMenu === 'admin' && activeSubmenuByMenu.admin === 'User Maintenance' && isAdminOrManagerUser ? (
               <section className="user-maintenance">
                 <div className="dashboard-actions">
-                  <button type="button" className="secondary" onClick={() => setAddUserOpen(true)}>Add User</button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => {
+                      setAddUserForm(INITIAL_ADD_USER_FORM)
+                      setAddUserTouched({})
+                      setAddUserSubmitTried(false)
+                      setAddUserApiError(null)
+                      setAddUserOpen(true)
+                    }}
+                  >
+                    Add User
+                  </button>
                   <button
                     type="button"
                     className="secondary"
@@ -1349,17 +1572,40 @@ function App() {
                         {USER_COLUMN_META.map((col) => (
                           <th
                             key={col.id}
-                            className="contacts-header-cell"
+                            className="contacts-header-cell user-maintenance-header-cell"
                             onMouseEnter={() => setHoveredUserHeader(col.id)}
-                            onMouseLeave={() => setHoveredUserHeader((prev) => (prev === col.id ? null : prev))}
+                            onMouseLeave={() => {
+                              if (pinnedUserFilterColumn !== col.id) {
+                                setHoveredUserHeader((prev) => (prev === col.id ? null : prev))
+                              }
+                            }}
+                            onFocusCapture={() => setHoveredUserHeader(col.id)}
+                            onBlurCapture={(e) => {
+                              if (pinnedUserFilterColumn === col.id) {
+                                return
+                              }
+                              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                                setHoveredUserHeader((prev) => (prev === col.id ? null : prev))
+                              }
+                            }}
                           >
-                            <span>{col.label}</span>
-                            {hoveredUserHeader === col.id && (
-                              <div className="contacts-header-quick-filter">
+                            <button
+                              type="button"
+                              className={`user-maintenance-header-label${pinnedUserFilterColumn === col.id ? ' pinned' : ''}${appliedUserColumnFilters[col.id].trim() ? ' filtered' : ''}`}
+                              onClick={() => togglePinnedUserFilter(col.id)}
+                            >
+                              {col.label}
+                              {appliedUserColumnFilters[col.id].trim() ? ' ●' : ''}
+                            </button>
+                            {shouldShowUserColumnFilter(col.id) && (
+                              <div
+                                className="contacts-header-quick-filter user-maintenance-header-filter"
+                                onMouseEnter={() => setHoveredUserHeader(col.id)}
+                              >
                                 <input
                                   type="text"
                                   className="contacts-header-quick-input"
-                                  placeholder="Search"
+                                  placeholder={`Search ${col.label.toLowerCase()}`}
                                   value={userColumnFilterDraft[col.id]}
                                   onChange={(e) =>
                                     setUserColumnFilterDraft((prev) => ({ ...prev, [col.id]: e.target.value }))
@@ -1380,18 +1626,32 @@ function App() {
                                 >
                                   🔍
                                 </button>
+                                {pinnedUserFilterColumn === col.id && (
+                                  <button
+                                    type="button"
+                                    className="contacts-header-quick-btn contacts-header-quick-close"
+                                    onClick={() => setPinnedUserFilterColumn(null)}
+                                    aria-label="Close search"
+                                    title="Close"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
                               </div>
                             )}
                           </th>
                         ))}
+                        <th className="contacts-header-cell user-actions-header">
+                          <span>Actions</span>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {userMaintenanceLoading && (
-                        <tr><td colSpan={7}><div className="loading-inline"><Spinner size="sm" /> Loading users...</div></td></tr>
+                        <tr><td colSpan={8}><div className="loading-inline"><Spinner size="sm" /> Loading users...</div></td></tr>
                       )}
                       {!userMaintenanceLoading && filteredUserRows.length === 0 && (
-                        <tr><td colSpan={7}>No users found.</td></tr>
+                        <tr><td colSpan={8}>No users found.</td></tr>
                       )}
                       {!userMaintenanceLoading && pagedUserRows.map((user) => (
                         <tr key={user.userId}>
@@ -1406,15 +1666,16 @@ function App() {
                           <td>{user.firstName}</td>
                           <td>{user.lastName}</td>
                           <td>{user.userGroups.join(', ')}</td>
-                          <td>
+                          <td className="user-alignment-cell">
                             <select
+                              className="user-alignment-select"
                               value={user.selectedAlignmentId ?? ''}
-                              onMouseEnter={(e) => e.currentTarget.focus()}
                               onChange={(e) => void changeUserAlignment(user.userId, e.target.value)}
                               disabled={savingAlignmentUserId === user.userId}
+                              aria-label={`Alignment for ${user.username}`}
                             >
-                              <option value="" disabled>
-                                Select
+                              <option value="" disabled hidden>
+                                Select alignment
                               </option>
                               {alignmentOptions.map((opt) => (
                                 <option key={opt.alignmentId} value={opt.alignmentId}>
@@ -1425,6 +1686,18 @@ function App() {
                           </td>
                           <td>{user.email}</td>
                           <td>{user.phoneNumber}</td>
+                          <td className="user-actions-cell">
+                            <button
+                              type="button"
+                              className="user-delete-btn"
+                              title="Remove user"
+                              aria-label={`Remove user ${user.username}`}
+                              disabled={profile?.userId === user.userId || deleteUserSubmitting}
+                              onClick={() => setDeleteUserTarget(user)}
+                            >
+                              🗑
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1440,60 +1713,10 @@ function App() {
               <>
                 {activeMenu === 'dashboard' && !activeSubmenu ? (
                   <>
-                    <div className="dashboard-actions">
-                      <div className="widget-dropdown-wrap" ref={widgetDropdownRef}>
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() => {
-                            const shouldOpen = !widgetDropdownOpen
-                            closeFloatingPopups()
-                            setWidgetDropdownOpen(shouldOpen)
-                          }}
-                        >
-                          Select widgets
-                        </button>
-                        {widgetDropdownOpen && (
-                          <div className="widget-dropdown">
-                            <p className="muted small">Choose widgets for your landing dashboard.</p>
-                            {WIDGET_CHOICES.map((widgetName) => (
-                              <label key={widgetName} className="widget-check">
-                                <input type="checkbox" checked={draftWidgets.includes(widgetName)} onChange={() => handleWidgetToggle(widgetName)} />
-                                <span>{widgetName}</span>
-                              </label>
-                            ))}
-                            <div className="row">
-                              <button type="button" className="link" onClick={handleWidgetCancel}>Cancel</button>
-                              <button type="button" className="primary" onClick={handleWidgetSubmit}>Submit</button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <button type="button" className="secondary" onClick={handleSavePreferences}>Save Preferences</button>
-                    </div>
                     {preferencesStatus && <p className="info">{preferencesStatus}</p>}
                     {contactSavedMessage && <p className="info success-msg">{contactSavedMessage}</p>}
                     {dealSavedMessage && <p className="info success-msg">{dealSavedMessage}</p>}
-                    <div className="widgets-grid">
-                      {selectedWidgets.length === 0 && (
-                        <div className="widget-card">
-                          <h3>No widgets selected</h3>
-                          <p>Open Select widgets and choose items for the dashboard.</p>
-                        </div>
-                      )}
-                      {selectedWidgets.map((widgetName) =>
-                        widgetName === 'Contact by Label' ? (
-                          <ContactByLabelWidget key={widgetName} username={profile?.username ?? null} />
-                        ) : widgetName === 'Deals Won/Lost Trend' ? (
-                          <DealOutcomeTrendWidget key={widgetName} username={profile?.username ?? null} />
-                        ) : (
-                          <article key={widgetName} className="widget-card">
-                            <h3>{widgetName}</h3>
-                            <p>Analytics report placeholder for {widgetName}.</p>
-                          </article>
-                        ),
-                      )}
-                    </div>
+                    <BentoDashboard username={profile?.username ?? null} />
                   </>
                 ) : (
                   <div className="submenu-panel">
@@ -1539,7 +1762,7 @@ function App() {
                   >
                     {COUNTRY_PHONE_OPTIONS.map((c) => (
                       <option key={`${c.value}-${c.name}`} value={c.value}>
-                        {c.flag} {c.name} ({c.dial})
+                        {c.name} ({c.dial})
                       </option>
                     ))}
                   </select>
@@ -1831,21 +2054,68 @@ function App() {
       )}
 
       {addUserOpen && (
-        <div className="modal-backdrop" role="presentation" onClick={() => setAddUserOpen(false)}>
+        <div className="modal-backdrop" role="presentation" onClick={() => { setAddUserOpen(false); setAddUserApiError(null) }}>
           <div className="modal user-maintenance-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h2>Add User</h2>
             <form className="stack" onSubmit={submitAddUser}>
-              <label className="field"><span>Username *</span><input value={addUserForm.username} onChange={(e) => setAddUserForm((p) => ({ ...p, username: e.target.value }))} onBlur={() => touchAddUserField('username')} />{showAddUserError('username') && <p className="error">{showAddUserError('username')}</p>}</label>
-              <label className="field"><span>First Name *</span><input value={addUserForm.firstName} onChange={(e) => setAddUserForm((p) => ({ ...p, firstName: e.target.value }))} onBlur={() => touchAddUserField('firstName')} />{showAddUserError('firstName') && <p className="error">{showAddUserError('firstName')}</p>}</label>
+              <label className="field">
+                <span>Username *</span>
+                <input
+                  value={usernameSuggesting ? 'Generating…' : addUserForm.username}
+                  disabled
+                  readOnly
+                  placeholder="Auto-generated"
+                  onBlur={() => touchAddUserField('username')}
+                />
+                {showAddUserError('username') && <p className="error">{showAddUserError('username')}</p>}
+              </label>
+              <label className="field">
+                <span>First Name *</span>
+                <input
+                  value={addUserForm.firstName}
+                  onChange={(e) => setAddUserForm((p) => ({ ...p, firstName: e.target.value }))}
+                  onBlur={() => touchAddUserField('firstName')}
+                />
+                {showAddUserError('firstName') && <p className="error">{showAddUserError('firstName')}</p>}
+              </label>
               <label className="field"><span>Last Name *</span><input value={addUserForm.lastName} onChange={(e) => setAddUserForm((p) => ({ ...p, lastName: e.target.value }))} onBlur={() => touchAddUserField('lastName')} />{showAddUserError('lastName') && <p className="error">{showAddUserError('lastName')}</p>}</label>
               <label className="field"><span>User Group *</span><select value={addUserForm.userGroup} onChange={(e) => setAddUserForm((p) => ({ ...p, userGroup: e.target.value }))} onBlur={() => touchAddUserField('userGroup')}><option value="">Select</option>{groupsOptions.map((g) => <option key={g.groupId} value={g.groupName}>{g.groupName}</option>)}</select>{showAddUserError('userGroup') && <p className="error">{showAddUserError('userGroup')}</p>}</label>
-              <label className="field"><span>Password *</span><input type="password" value={addUserForm.password} onChange={(e) => setAddUserForm((p) => ({ ...p, password: e.target.value }))} onBlur={() => touchAddUserField('password')} />{showAddUserError('password') && <p className="error">{showAddUserError('password')}</p>}</label>
+              <label className="field">
+                <span>Add to group (optional)</span>
+                <select value={addUserForm.addToGroup} onChange={(e) => setAddUserForm((p) => ({ ...p, addToGroup: e.target.value }))}>
+                  <option value="">None</option>
+                  {groupsOptions.map((g) => <option key={g.groupId} value={g.groupName}>{g.groupName}</option>)}
+                </select>
+              </label>
               <label className="field"><span>Email *</span><input type="email" value={addUserForm.email} onChange={(e) => setAddUserForm((p) => ({ ...p, email: e.target.value }))} onBlur={() => touchAddUserField('email')} />{showAddUserError('email') && <p className="error">{showAddUserError('email')}</p>}</label>
-              <label className="field"><span>Phone Number *</span><input value={addUserForm.phoneNumber} inputMode="numeric" onChange={(e) => setAddUserForm((p) => ({ ...p, phoneNumber: e.target.value }))} onBlur={() => touchAddUserField('phoneNumber')} />{showAddUserError('phoneNumber') && <p className="error">{showAddUserError('phoneNumber')}</p>}</label>
-              <label className="field"><span>Add to group</span><select value={addUserForm.addToGroup} onChange={(e) => setAddUserForm((p) => ({ ...p, addToGroup: e.target.value }))}><option value="">Select</option>{groupsOptions.map((g) => <option key={g.groupId} value={g.groupName}>{g.groupName}</option>)}</select></label>
-              <div className="row">
-                <button type="button" className="secondary" onClick={() => setAddUserOpen(false)}>Cancel</button>
-                <button type="submit" className="primary" disabled={addUserSubmitting}>{addUserSubmitting ? <><Spinner size="sm" /> Submitting...</> : 'Submit'}</button>
+              <label className="field">
+                <span>Phone Number *</span>
+                <div className="phone-with-country">
+                  <AddUserCountryCodePicker
+                    value={addUserForm.phoneCountryCode}
+                    onChange={handleAddUserPhoneCountryChange}
+                    onBlur={() => touchAddUserField('phoneNumber')}
+                  />
+                  <input
+                    value={addUserForm.phoneNumber}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={phoneRulesForCountry(addUserForm.phoneCountryCode).nationalLength}
+                    onChange={(e) => handleAddUserPhoneNumberChange(e.target.value)}
+                    onBlur={() => touchAddUserField('phoneNumber')}
+                  />
+                </div>
+                {showAddUserError('phoneNumber') && <p className="error">{showAddUserError('phoneNumber')}</p>}
+              </label>
+              <div className="row add-user-form-actions">
+                <button type="button" className="secondary" onClick={() => { setAddUserOpen(false); setAddUserApiError(null) }}>Cancel</button>
+                <div className="add-user-form-actions-messages">
+                  {addUserApiError && <p className="error add-user-form-error">{addUserApiError}</p>}
+                  {addUserSubmitTried && Object.keys(addUserErrors).length > 0 && !addUserApiError && (
+                    <p className="error add-user-form-error">Please fix the highlighted fields above.</p>
+                  )}
+                </div>
+                <button type="submit" className="primary" disabled={addUserSubmitting || usernameSuggesting}>{addUserSubmitting ? <><Spinner size="sm" /> Submitting...</> : 'Submit'}</button>
               </div>
             </form>
           </div>
@@ -1885,9 +2155,20 @@ function App() {
             )}
             {forgotStep === 'password' && (
               <form className="stack" onSubmit={submitForgotPassword}>
-                <p className="muted">Enter your email. You will receive a temporary password valid for 10 minutes.</p>
-                <label className="field"><span>Email</span><input type="email" value={recoveryEmail} onChange={(e) => setRecoveryEmail(e.target.value)} required /></label>
-                {recoveryMessage && <p className="info">{recoveryMessage}</p>}
+                <p className="muted">Enter the email or user ID on your account. A temporary password valid for 10 minutes will be emailed.</p>
+                <label className="field">
+                  <span>Email or user ID</span>
+                  <input
+                    type="text"
+                    autoComplete="username"
+                    value={recoveryEmail}
+                    onChange={(e) => setRecoveryEmail(e.target.value)}
+                    required
+                  />
+                </label>
+                {recoveryMessage && (
+                  <p className={recoveryIsError ? 'error' : 'info'}>{recoveryMessage}</p>
+                )}
                 <div className="row"><button type="button" className="link" onClick={() => setForgotStep('menu')}>Back</button><button type="submit" className="primary" disabled={busy}>Send email</button></div>
               </form>
             )}
@@ -1903,11 +2184,66 @@ function App() {
         </div>
       )}
 
-      {changePwdOpen && token && (
-        <div className="modal-backdrop" role="presentation" onClick={() => !busy && setChangePwdOpen(false)}>
-          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="pwd-title" onClick={(e) => e.stopPropagation()}>
+      {deleteUserTarget && (
+        <div className="modal-backdrop modal-backdrop--forced" role="presentation">
+          <div
+            className="modal user-delete-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-user-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="delete-user-title">Remove user?</h2>
+            <p>
+              Remove <strong>{deleteUserTarget.firstName} {deleteUserTarget.lastName}</strong> (
+              {deleteUserTarget.username})? You will need to add this user again; changes made here cannot be
+              revoked.
+            </p>
+            <p className="muted small user-delete-reports-note">
+              Reports would still contain Deals worked upon by the user being removed.
+            </p>
+            <div className="row">
+              <button
+                type="button"
+                className="secondary"
+                disabled={deleteUserSubmitting}
+                onClick={() => setDeleteUserTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary user-delete-confirm-btn"
+                disabled={deleteUserSubmitting}
+                onClick={() => void confirmDeleteUser()}
+              >
+                {deleteUserSubmitting ? <><Spinner size="sm" /> Removing…</> : 'Confirm remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showForcedPasswordChange && (
+        <div
+          className="modal-backdrop modal-backdrop--forced"
+          role="presentation"
+          aria-modal="true"
+        >
+          <div
+            className="modal modal--forced-password"
+            role="dialog"
+            aria-labelledby="pwd-title"
+            aria-describedby="pwd-desc"
+          >
             <h2 id="pwd-title">Set a new password</h2>
-            <p className="muted policy">Your new password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character.</p>
+            <p id="pwd-desc" className="muted policy">
+              This is your first login. You must choose a new password before you can use the CRM.
+            </p>
+            <p className="muted policy small">
+              Your new password must be at least 8 characters and include an uppercase letter, a lowercase letter, a
+              number, and a special character.
+            </p>
             <form className="stack" onSubmit={submitNewPassword}>
               <label className="field"><span>New password</span><input type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required /></label>
               <label className="field"><span>Confirm password</span><input type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required /></label>

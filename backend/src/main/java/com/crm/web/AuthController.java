@@ -1,6 +1,7 @@
 package com.crm.web;
 
 import com.crm.service.AuthService;
+import com.crm.web.dto.AccountRecoveryRequest;
 import com.crm.web.dto.EmailRequest;
 import com.crm.web.dto.ForgotPasswordResponse;
 import com.crm.web.dto.LoginRequest;
@@ -21,8 +22,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    private static final String GENERIC_FORGOT_MSG =
+    private static final String GENERIC_FORGOT_USERID_MSG =
             "If an account exists for that email, instructions have been sent.";
+
+    private static final String FORGOT_PASSWORD_SUCCESS_MSG =
+            "A temporary password has been sent to the email on file for this account. "
+                    + "It is valid for 10 minutes. Sign in and choose a new password.";
 
     private final AuthService authService;
 
@@ -46,15 +51,15 @@ public class AuthController {
     }
 
     @PostMapping("/forgot-password")
-    public ForgotPasswordResponse forgotPassword(@Valid @RequestBody EmailRequest request) {
-        authService.forgotPassword(request.email());
-        return new ForgotPasswordResponse(GENERIC_FORGOT_MSG);
+    public ForgotPasswordResponse forgotPassword(@Valid @RequestBody AccountRecoveryRequest request) {
+        authService.forgotPassword(request.emailOrUsername());
+        return new ForgotPasswordResponse(FORGOT_PASSWORD_SUCCESS_MSG);
     }
 
     @PostMapping("/forgot-userid")
     public ForgotPasswordResponse forgotUserId(@Valid @RequestBody EmailRequest request) {
         authService.forgotUserId(request.email());
-        return new ForgotPasswordResponse(GENERIC_FORGOT_MSG);
+        return new ForgotPasswordResponse(GENERIC_FORGOT_USERID_MSG);
     }
 
     @PostMapping("/change-password-after-reset")
